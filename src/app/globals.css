@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-heebo), "Heebo", system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-rubik), "Rubik", system-ui, sans-serif;
+}
+
+@theme {
+  --color-brand-50:  oklch(0.97 0.013 78);
+  --color-brand-100: oklch(0.93 0.027 78);
+  --color-brand-200: oklch(0.87 0.048 78);
+  --color-brand-300: oklch(0.78 0.066 75);
+  --color-brand-400: oklch(0.70 0.075 73);
+  --color-brand-500: oklch(0.62 0.075 70);  /* ≈ #A88A5B */
+  --color-brand-600: oklch(0.53 0.072 68);
+  --color-brand-700: oklch(0.44 0.062 66);
+  --color-brand-800: oklch(0.35 0.05 64);
+  --color-brand-900: oklch(0.26 0.038 62);
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    font-family: var(--font-sans);
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+  }
+}
