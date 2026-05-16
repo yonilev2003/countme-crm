@@ -1,43 +1,52 @@
-export default function PeoplePage() {
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { PeopleTable } from "@/components/people/people-table";
+import type { OwnerProfile, Person } from "@/lib/people";
+
+export default async function PeoplePage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [peopleRes, profilesRes] = await Promise.all([
+    supabase
+      .from("people")
+      .select(
+        "id, name, email, phone, company, role, status, tags, notes, owner_id, created_at, updated_at",
+      )
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, display_name, full_name, avatar_url"),
+  ]);
+
+  const people = (peopleRes.data ?? []) as Person[];
+  const profiles = (profilesRes.data ?? []) as OwnerProfile[];
+
   return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-8 flex items-end justify-between">
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-8 flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">אנשים</h1>
-          <p className="mt-2 text-slate-600">
-            מאגר אנשי הקשר של הצוות עם סטטוס, תיוגים והערות
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900">אנשי קשר</h1>
+          <p className="mt-2 text-slate-600">מאגר אנשי הקשר של הצוות</p>
         </div>
-        <button
-          disabled
-          className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-medium text-slate-400"
+        <Link
+          href="/people/new"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-95"
         >
-          הוסף איש (Phase B)
-        </button>
+          <Plus className="h-4 w-4" />
+          איש קשר חדש
+        </Link>
       </div>
 
-      <ComingSoonCard
-        phase="Phase B"
-        description="רשימת אנשים עם status/tags/owner, יצירה ועריכה, פרופיל עם טאבים (פרטים | משימות | מסמכים | צ׳אט)."
+      <PeopleTable
+        people={people}
+        currentUserId={user?.id ?? ""}
+        profiles={profiles}
       />
-    </div>
-  );
-}
-
-function ComingSoonCard({
-  phase,
-  description,
-}: {
-  phase: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-12 text-center">
-      <div className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-        {phase}
-      </div>
-      <h2 className="mt-4 text-xl font-bold text-slate-900">בקרוב</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">{description}</p>
     </div>
   );
 }
