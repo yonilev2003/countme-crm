@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
@@ -42,7 +42,10 @@ export function PeopleForm({
   action,
 }: Props) {
   const router = useRouter();
+  const isEdit = initialValues !== null;
+  const editingId = initialValues?.id ?? null;
   const [tags, setTags] = useState<string[]>(initialValues?.tags ?? []);
+  const [, startTransition] = useTransition();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -91,7 +94,7 @@ export function PeopleForm({
     setValue("status", s, { shouldValidate: false });
   }
 
-  async function onSubmit(values: FormFields) {
+  function onSubmit(values: FormFields) {
     setSubmitError(null);
 
     // Capture any remaining tag text the user didn't blur out yet
@@ -121,17 +124,46 @@ export function PeopleForm({
       return;
     }
 
+    // Optimistic UX: we navigate away IMMEDIATELY so the user feels the save
+    // landed in <50ms. The actual server action keeps running in the
+    // background; if it fails, we route back to the form with the error.
+    //
+    // Edit: we already know the id, so we can land on /people/{id} directly.
+    // Create: we don't have an id yet, so we go to /people and rely on
+    //         router.refresh() to bring in the new row at the top once the
+    //         server action finishes.
     setSubmitting(true);
-    const result = await action(parsed.data);
+    const optimisticHref = isEdit && editingId
+      ? `/people/${editingId}`
+      : "/people";
 
-    if ("error" in result) {
-      setSubmitError(result.error);
-      setSubmitting(false);
-      return;
-    }
+    // Fire the server action without awaiting — handle the result async.
+    const actionPromise = action(parsed.data);
 
-    router.push(`/people/${result.id}`);
-    router.refresh();
+    startTransition(() => {
+      router.push(optimisticHref);
+    });
+
+    actionPromise
+      .then((result) => {
+        if ("error" in result) {
+          // Bring the user back to the form with the error visible.
+          setSubmitError(result.error);
+          setSubmitting(false);
+          router.back();
+          return;
+        }
+        // Success: trigger a refresh so the newly-created/updated row appears.
+        router.refresh();
+        setSubmitting(false);
+      })
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : "שגיאה בשמירה";
+        setSubmitError(message);
+        setSubmitting(false);
+        router.back();
+      });
   }
 
   return (

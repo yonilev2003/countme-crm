@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TaskQuickAdd } from "@/components/tasks/task-quick-add";
 import { TaskViews } from "@/components/tasks/task-views";
+import { LoadingTable } from "@/components/ui/loading-table";
 import type {
   PersonOption,
   ProfileOption,
@@ -23,6 +25,8 @@ type PersonRow = {
 };
 
 export default async function TasksPage() {
+  // Header + quick-add render instantly. The table queries live in
+  // <TasksSection> below and stream in via Suspense.
   const supabase = await createClient();
   const {
     data: { user },
@@ -31,6 +35,27 @@ export default async function TasksPage() {
   if (!user) {
     redirect("/login");
   }
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-4">
+      <header className="space-y-1">
+        <h1 className="text-3xl font-bold text-slate-900">משימות</h1>
+        <p className="text-sm text-slate-600">
+          ניהול משימות עם תאריכים גמישים. הקלידו בעברית טבעית — &quot;מחר&quot;, &quot;סוף החודש&quot;, &quot;Q2 2026&quot; — וה־AI יבין.
+        </p>
+      </header>
+
+      <TaskQuickAdd />
+
+      <Suspense fallback={<LoadingTable rows={6} showToolbar />}>
+        <TasksSection currentUserId={user.id} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function TasksSection({ currentUserId }: { currentUserId: string }) {
+  const supabase = await createClient();
 
   // Fetch in parallel — RLS lets any authenticated user read tasks/people/profiles.
   const [tasksRes, profilesRes, peopleRes] = await Promise.all([
@@ -69,22 +94,11 @@ export default async function TasksPage() {
   }));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-3xl font-bold text-slate-900">משימות</h1>
-        <p className="text-sm text-slate-600">
-          ניהול משימות עם תאריכים גמישים. הקלידו בעברית טבעית — &quot;מחר&quot;, &quot;סוף החודש&quot;, &quot;Q2 2026&quot; — וה־AI יבין.
-        </p>
-      </header>
-
-      <TaskQuickAdd />
-
-      <TaskViews
-        tasks={tasks}
-        profiles={profiles}
-        people={people}
-        currentUserId={user.id}
-      />
-    </div>
+    <TaskViews
+      tasks={tasks}
+      profiles={profiles}
+      people={people}
+      currentUserId={currentUserId}
+    />
   );
 }

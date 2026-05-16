@@ -1,11 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles, Check, AlertCircle, RotateCcw } from "lucide-react";
+import { Loader2, Sparkles, Check, AlertCircle, RotateCcw, X } from "lucide-react";
 import { createTaskFromParse } from "@/app/(app)/tasks/actions";
 import { TaskDueDisplay } from "@/components/tasks/task-due-display";
 import { cn } from "@/lib/utils";
+
+type Recent =
+  | { kind: "success"; title: string }
+  | { kind: "error"; title: string; message: string };
 
 type Alternative = {
   due_start: string;
@@ -35,6 +39,18 @@ export function TaskQuickAdd() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  // Optimistic "just added" indicator that auto-dismisses after 3s.
+  // We show success the moment confirmSave is called and only flip to error
+  // if the server action fails after the fact.
+  const [recent, setRecent] = useState<Recent | null>(null);
+
+  useEffect(() => {
+    if (recent?.kind !== "success") return;
+    const t = setTimeout(() => {
+      setRecent((cur) => (cur?.kind === "success" ? null : cur));
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [recent]);
 
   async function runParse(value: string) {
     if (value.trim().length < 2) return;
@@ -65,26 +81,44 @@ export function TaskQuickAdd() {
     runParse(text);
   }
 
-  async function confirmSave() {
+  function confirmSave() {
     if (status.kind !== "parsed") return;
-    setStatus({ kind: "saving" });
 
-    const result = await createTaskFromParse({
-      title: status.result.title,
-      due_start: status.result.due_start,
-      due_end: status.result.due_end,
-      due_label: status.result.due_label,
-    });
-
-    if (!result.success) {
-      setStatus({ kind: "error", message: result.error });
-      return;
-    }
+    // Optimistic: clear the input, show the "just added" chip, refresh the
+    // table — all BEFORE the server action resolves. The action runs in the
+    // background; on error we replace the chip with an error message.
+    const parsed = status.result;
+    const optimisticTitle = parsed.title;
 
     setText("");
     setStatus({ kind: "idle" });
+    setRecent({ kind: "success", title: optimisticTitle });
     inputRef.current?.focus();
     router.refresh();
+
+    createTaskFromParse({
+      title: parsed.title,
+      due_start: parsed.due_start,
+      due_end: parsed.due_end,
+      due_label: parsed.due_label,
+    })
+      .then((result) => {
+        if (!result.success) {
+          setRecent({
+            kind: "error",
+            title: optimisticTitle,
+            message: result.error,
+          });
+          return;
+        }
+        // Final reconcile — the previous refresh might have raced the insert.
+        router.refresh();
+      })
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error ? err.message : "שגיאה לא ידועה";
+        setRecent({ kind: "error", title: optimisticTitle, message });
+      });
   }
 
   function reset() {
@@ -171,6 +205,36 @@ export function TaskQuickAdd() {
           onPickAlternative={pickAlternative}
           saving={saving}
         />
+      )}
+
+      {recent?.kind === "success" && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          <Check className="h-4 w-4 shrink-0" />
+          <span className="truncate">נוסף: {recent.title}</span>
+          <button
+            type="button"
+            onClick={() => setRecent(null)}
+            aria-label="סגור"
+            className="ms-auto rounded-md px-2 py-0.5 text-xs hover:bg-emerald-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {recent?.kind === "error" && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span className="truncate">שגיאה בשמירת &quot;{recent.title}&quot;: {recent.message}</span>
+          <button
+            type="button"
+            onClick={() => setRecent(null)}
+            aria-label="סגור"
+            className="ms-auto rounded-md px-2 py-0.5 text-xs hover:bg-red-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
 
       {saving && (
