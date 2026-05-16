@@ -27,7 +27,10 @@ npm run dev
 הרצה ידנית דרך Supabase SQL Editor (MCP לא נגיש לפרויקט הזה):
 
 1. פתח את https://supabase.com/dashboard/project/fsbgxtmxvhxmmtcflmug/sql/new
-2. הדבק והרץ בסדר: `supabase/migrations/0001_initial_schema.sql` → `0002_rls_policies.sql` → `0003_storage_buckets.sql` → `0004_realtime_publication.sql`
+2. אם הפרויקט נקי - דלג ל-3. אם יש שאריות ממיגרציה קודמת (errors מסוג "type already exists" / "already member of publication") - **הרץ קודם** `supabase/migrations/0000_reset.sql` (destructive - מוחק את כל ה-CRM tables וה-types שלנו)
+3. הרץ בסדר: `0001_initial_schema.sql` → `0002_rls_policies.sql` → `0003_storage_buckets.sql` → `0004_realtime_publication.sql`
+
+כל המיגרציות 0001-0004 הן idempotent - בטוח להריץ אותן שוב.
 
 ## Auth flow (critical)
 

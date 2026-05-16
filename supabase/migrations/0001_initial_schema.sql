@@ -1,25 +1,43 @@
--- countme-crm: initial schema
+-- countme-crm: initial schema (idempotent)
 -- Internal team CRM with chat, people tracking, Gantt, documents, calendar.
 -- Run in Supabase SQL Editor: https://supabase.com/dashboard/project/fsbgxtmxvhxmmtcflmug/sql/new
+-- If a prior partial run left objects behind, run 0000_reset.sql first.
 
 set search_path = public;
 
 -- ============================================================
--- ENUMS
+-- ENUMS (idempotent via duplicate_object exception)
 -- ============================================================
 
-create type person_status as enum ('lead', 'active', 'inactive', 'partner');
-create type task_status as enum ('todo', 'doing', 'done');
-create type task_priority as enum ('low', 'med', 'high');
-create type channel_type as enum ('channel', 'dm', 'person_thread');
-create type event_response as enum ('pending', 'accepted', 'declined');
-create type gantt_import_status as enum ('parsing', 'done', 'error');
+do $$ begin
+  create type person_status as enum ('lead', 'active', 'inactive', 'partner');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type task_status as enum ('todo', 'doing', 'done');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type task_priority as enum ('low', 'med', 'high');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type channel_type as enum ('channel', 'dm', 'person_thread');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type event_response as enum ('pending', 'accepted', 'declined');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type gantt_import_status as enum ('parsing', 'done', 'error');
+exception when duplicate_object then null; end $$;
 
 -- ============================================================
 -- PROFILES (extends auth.users)
 -- ============================================================
 
-create table profiles (
+create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
   email text,
@@ -32,7 +50,6 @@ create table profiles (
   updated_at timestamptz not null default now()
 );
 
--- Auto-create profile row on auth.users insert (Google OAuth first sign-in)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -67,7 +84,7 @@ create trigger on_auth_user_created
 -- PEOPLE (CRM contacts)
 -- ============================================================
 
-create table people (
+create table if not exists people (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   email text,
@@ -82,15 +99,15 @@ create table people (
   updated_at timestamptz not null default now()
 );
 
-create index idx_people_owner on people(owner_id);
-create index idx_people_status on people(status);
-create index idx_people_tags on people using gin(tags);
+create index if not exists idx_people_owner on people(owner_id);
+create index if not exists idx_people_status on people(status);
+create index if not exists idx_people_tags on people using gin(tags);
 
 -- ============================================================
 -- PROJECTS (Gantt parents)
 -- ============================================================
 
-create table projects (
+create table if not exists projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   description text,
@@ -101,13 +118,13 @@ create table projects (
   updated_at timestamptz not null default now()
 );
 
-create index idx_projects_owner on projects(owner_id);
+create index if not exists idx_projects_owner on projects(owner_id);
 
 -- ============================================================
 -- TASKS
 -- ============================================================
 
-create table tasks (
+create table if not exists tasks (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   description text,
@@ -124,17 +141,17 @@ create table tasks (
   updated_at timestamptz not null default now()
 );
 
-create index idx_tasks_assignee on tasks(assignee_id);
-create index idx_tasks_person on tasks(person_id);
-create index idx_tasks_project on tasks(project_id);
-create index idx_tasks_due_date on tasks(due_date);
-create index idx_tasks_status on tasks(status);
+create index if not exists idx_tasks_assignee on tasks(assignee_id);
+create index if not exists idx_tasks_person on tasks(person_id);
+create index if not exists idx_tasks_project on tasks(project_id);
+create index if not exists idx_tasks_due_date on tasks(due_date);
+create index if not exists idx_tasks_status on tasks(status);
 
 -- ============================================================
 -- DOCUMENTS
 -- ============================================================
 
-create table documents (
+create table if not exists documents (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   storage_path text not null unique,
@@ -146,15 +163,15 @@ create table documents (
   uploaded_at timestamptz not null default now()
 );
 
-create index idx_documents_owner on documents(owner_id);
-create index idx_documents_person on documents(person_id);
-create index idx_documents_project on documents(project_id);
+create index if not exists idx_documents_owner on documents(owner_id);
+create index if not exists idx_documents_person on documents(person_id);
+create index if not exists idx_documents_project on documents(project_id);
 
 -- ============================================================
 -- CHAT: channels / channel_members / messages
 -- ============================================================
 
-create table channels (
+create table if not exists channels (
   id uuid primary key default gen_random_uuid(),
   name text,
   description text,
@@ -169,10 +186,10 @@ create table channels (
     check (type <> 'channel' or name is not null)
 );
 
-create unique index idx_channels_person_thread
+create unique index if not exists idx_channels_person_thread
   on channels(person_id) where type = 'person_thread';
 
-create table channel_members (
+create table if not exists channel_members (
   channel_id uuid not null references channels(id) on delete cascade,
   profile_id uuid not null references profiles(id) on delete cascade,
   last_read_at timestamptz,
@@ -180,9 +197,9 @@ create table channel_members (
   primary key (channel_id, profile_id)
 );
 
-create index idx_channel_members_profile on channel_members(profile_id);
+create index if not exists idx_channel_members_profile on channel_members(profile_id);
 
-create table messages (
+create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   channel_id uuid not null references channels(id) on delete cascade,
   sender_id uuid not null references profiles(id) on delete restrict,
@@ -191,14 +208,14 @@ create table messages (
   created_at timestamptz not null default now()
 );
 
-create index idx_messages_channel_created on messages(channel_id, created_at desc);
-create index idx_messages_sender on messages(sender_id);
+create index if not exists idx_messages_channel_created on messages(channel_id, created_at desc);
+create index if not exists idx_messages_sender on messages(sender_id);
 
 -- ============================================================
 -- EVENTS (Calendar)
 -- ============================================================
 
-create table events (
+create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   description text,
@@ -213,12 +230,12 @@ create table events (
   created_at timestamptz not null default now()
 );
 
-create index idx_events_owner on events(owner_id);
-create index idx_events_start on events(start_at);
-create unique index idx_events_google_id on events(google_event_id)
+create index if not exists idx_events_owner on events(owner_id);
+create index if not exists idx_events_start on events(start_at);
+create unique index if not exists idx_events_google_id on events(google_event_id)
   where google_event_id is not null;
 
-create table event_attendees (
+create table if not exists event_attendees (
   event_id uuid not null references events(id) on delete cascade,
   profile_id uuid not null references profiles(id) on delete cascade,
   response event_response not null default 'pending',
@@ -229,7 +246,7 @@ create table event_attendees (
 -- GANTT IMPORTS
 -- ============================================================
 
-create table gantt_imports (
+create table if not exists gantt_imports (
   id uuid primary key default gen_random_uuid(),
   original_filename text not null,
   raw_json jsonb,
@@ -239,7 +256,7 @@ create table gantt_imports (
   created_at timestamptz not null default now()
 );
 
-create index idx_gantt_imports_owner on gantt_imports(owner_id);
+create index if not exists idx_gantt_imports_owner on gantt_imports(owner_id);
 
 -- ============================================================
 -- updated_at TRIGGER
@@ -255,18 +272,22 @@ begin
 end;
 $$;
 
+drop trigger if exists profiles_set_updated_at on profiles;
 create trigger profiles_set_updated_at
   before update on profiles
   for each row execute function set_updated_at();
 
+drop trigger if exists people_set_updated_at on people;
 create trigger people_set_updated_at
   before update on people
   for each row execute function set_updated_at();
 
+drop trigger if exists projects_set_updated_at on projects;
 create trigger projects_set_updated_at
   before update on projects
   for each row execute function set_updated_at();
 
+drop trigger if exists tasks_set_updated_at on tasks;
 create trigger tasks_set_updated_at
   before update on tasks
   for each row execute function set_updated_at();
