@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Topbar } from "@/components/topbar";
+import { CommandPalette } from "@/components/command-palette";
 
 export default async function AppLayout({
   children,
@@ -55,6 +56,7 @@ export default async function AppLayout({
         )}
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

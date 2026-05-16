@@ -5,6 +5,7 @@ import { LogOut, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { MobileSidebar } from "./app-sidebar";
+import { NotificationBell } from "./notification-bell";
 
 type TopbarProps = {
   displayName: string | null;
@@ -57,6 +58,8 @@ export function Topbar({
         </div>
 
         <div className="flex items-center gap-3">
+          <NotificationBell />
+
           <div className="hidden text-end sm:block">
             <div className="text-sm font-medium text-slate-900">
               {displayName ?? "—"}
