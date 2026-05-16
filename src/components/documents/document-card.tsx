@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Download,
+  ExternalLink,
   Trash2,
   File as FileGeneric,
   FileText,
@@ -32,6 +33,8 @@ export type DocumentRow = {
   project_id: string | null;
   owner_id: string;
   uploaded_at: string;
+  drive_file_id: string | null;
+  drive_web_view_link: string | null;
 };
 
 export type OwnerInfo = {
@@ -74,11 +77,15 @@ export function DocumentCard({
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const isImage = (doc.mime_type ?? "").startsWith("image/");
+  // Drive-only rows (created remotely in Drive) have no Supabase Storage copy.
+  // Their storage_path is a synthetic "drive:<id>" sentinel.
+  const isDriveOnly = doc.storage_path.startsWith("drive:");
 
   // Fetch a short-lived signed URL for the thumbnail. Stays in component
   // state so the broken-link state can fall back to the icon view.
   useEffect(() => {
     if (!isImage) return;
+    if (isDriveOnly) return; // no Storage object to sign a URL for
     let cancelled = false;
     (async () => {
       try {
@@ -92,7 +99,7 @@ export function DocumentCard({
     return () => {
       cancelled = true;
     };
-  }, [isImage, doc.storage_path]);
+  }, [isImage, isDriveOnly, doc.storage_path]);
 
   const iconName = mimeIcon(doc.mime_type ?? "");
   const Icon = ICON_MAP[iconName] ?? FileGeneric;
@@ -161,17 +168,31 @@ export function DocumentCard({
           </div>
         )}
 
-        <div className="pointer-events-none absolute inset-0 flex items-end justify-center gap-2 bg-gradient-to-t from-black/55 via-black/0 to-black/0 p-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={downloading}
-            aria-label="הורד מסמך"
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {downloading ? "מכין..." : "הורד"}
-          </button>
+        <div className="pointer-events-none absolute inset-0 flex flex-wrap items-end justify-center gap-2 bg-gradient-to-t from-black/55 via-black/0 to-black/0 p-3 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+          {!isDriveOnly && (
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading}
+              aria-label="הורד מסמך"
+              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {downloading ? "מכין..." : "הורד"}
+            </button>
+          )}
+          {doc.drive_web_view_link && (
+            <a
+              href={doc.drive_web_view_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="פתח ב־Drive"
+              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-brand-500/95 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              פתח ב־Drive
+            </a>
+          )}
           {isOwner && (
             <button
               type="button"
