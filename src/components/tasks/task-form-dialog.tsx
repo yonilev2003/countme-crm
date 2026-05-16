@@ -143,29 +143,33 @@ export function TaskFormDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/40 sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+      <div className="flex w-full max-h-screen flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[90vh] sm:max-w-2xl sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4">
           <h2 className="text-lg font-semibold text-slate-900">
             {mode.kind === "create" ? "משימה חדשה" : "עריכת משימה"}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-md p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             aria-label="סגור"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 p-6">
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
           <Field
             label="כותרת"
             error={errors.title?.message}
@@ -332,8 +336,9 @@ export function TaskFormDialog({
               {serverError}
             </p>
           )}
+          </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 sm:px-6 sm:py-4">
             <div>
               {mode.kind === "edit" && mode.canDelete && (
                 <button
