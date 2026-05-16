@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { CalendarPlus, Loader2, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { CalendarPlus, Loader2, RefreshCw, Wifi } from "lucide-react";
 import { MonthView, type CalendarTile } from "@/components/calendar/month-view";
 import {
   EventDialog,
@@ -63,9 +64,54 @@ export function CalendarShell({
   const [editing, setEditing] = useState<DialogEvent | null>(null);
   const [defaultDate, setDefaultDate] = useState<Date | null>(null);
 
+  const router = useRouter();
   const [syncing, startSync] = useTransition();
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [autoSyncOn, setAutoSyncOn] = useState<boolean>(true);
+  const autoSyncBusyRef = useRef(false);
+
+  // Continuous background sync: on mount + every 60 seconds while tab is
+  // visible. Non-blocking (uses no transition); silent unless events change.
+  useEffect(() => {
+    if (!autoSyncOn) return;
+
+    let cancelled = false;
+
+    async function runSilent() {
+      if (autoSyncBusyRef.current) return;
+      if (document.hidden) return;
+      autoSyncBusyRef.current = true;
+      try {
+        const r = await requestSync("both");
+        if (cancelled) return;
+        setLastSyncAt(new Date());
+        if (r.pulled + r.pushed + r.deleted > 0) {
+          // Schema changed → revalidate via router.refresh so server-fetched
+          // events re-render
+          router.refresh();
+        }
+      } catch {
+        // Swallow — auto-sync errors shouldn't toast.
+      } finally {
+        autoSyncBusyRef.current = false;
+      }
+    }
+
+    runSilent();
+    const intervalId = window.setInterval(runSilent, 60_000);
+    const onVisibility = () => {
+      if (!document.hidden) runSilent();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [autoSyncOn, router]);
 
   function toggleFilter(k: FilterKey) {
     setFilters((prev) => ({ ...prev, [k]: !prev[k] }));
@@ -108,6 +154,8 @@ export function CalendarShell({
           errs,
       );
       if (r.errors.length) setSyncError(r.errors.join("; "));
+      setLastSyncAt(new Date());
+      if (r.pulled + r.pushed + r.deleted > 0) router.refresh();
     });
   }
 
@@ -169,6 +217,30 @@ export function CalendarShell({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAutoSyncOn((v) => !v)}
+            title={
+              autoSyncOn
+                ? "סנכרון אוטומטי כל 60 שניות פעיל. לחץ להפסקה."
+                : "סנכרון אוטומטי כבוי. לחץ להפעלה."
+            }
+            className={
+              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition " +
+              (autoSyncOn
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50")
+            }
+            aria-pressed={autoSyncOn}
+          >
+            <Wifi className="h-3.5 w-3.5" />
+            {autoSyncOn ? "סנכרון אוטומטי" : "אוטומטי כבוי"}
+            {lastSyncAt && autoSyncOn && (
+              <span className="text-emerald-700/70">
+                · {lastSyncAt.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={handleSync}
