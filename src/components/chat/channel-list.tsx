@@ -6,18 +6,22 @@ import {
   ChannelListItem,
   type ChannelListItemData,
 } from "./channel-list-item";
-import { NewChannelDialog } from "./new-channel-dialog";
+import { NewChannelDialog, type TeamMember } from "./new-channel-dialog";
 
 export type ChannelListProps = {
   channels: ChannelListItemData[];
   unreadCounts: Record<string, number>;
   activeChannelId: string | null;
+  currentUserId: string;
+  teamMembers: TeamMember[];
 };
 
 export function ChannelList({
   channels,
   unreadCounts,
   activeChannelId,
+  currentUserId,
+  teamMembers,
 }: ChannelListProps) {
   const [query, setQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -40,7 +44,7 @@ export function ChannelList({
           className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-600"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          <span>ערוץ חדש</span>
+          <span>שיחה חדשה</span>
         </button>
       </div>
 
@@ -78,7 +82,11 @@ export function ChannelList({
       </nav>
 
       {dialogOpen && (
-        <NewChannelDialog onClose={() => setDialogOpen(false)} />
+        <NewChannelDialog
+          onClose={() => setDialogOpen(false)}
+          currentUserId={currentUserId}
+          teamMembers={teamMembers}
+        />
       )}
     </div>
   );

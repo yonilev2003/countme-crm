@@ -99,6 +99,19 @@ export default async function ChannelPage({
     }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "he"));
 
+  // Channel-list dialog needs full profile rows with email
+  const { data: dialogTeamRaw } = await supabase
+    .from("profiles")
+    .select("id, display_name, full_name, avatar_url, email")
+    .order("display_name", { ascending: true });
+  const dialogTeamMembers = (dialogTeamRaw ?? []).map((p) => ({
+    id: p.id,
+    display_name: p.display_name,
+    full_name: p.full_name,
+    avatar_url: p.avatar_url,
+    email: p.email,
+  }));
+
   const meDisplay =
     meProfile?.display_name ??
     meProfile?.full_name ??
@@ -113,6 +126,8 @@ export default async function ChannelPage({
           channels={channels}
           unreadCounts={unreadCounts}
           activeChannelId={channelId}
+          currentUserId={user.id}
+          teamMembers={dialogTeamMembers}
         />
       </aside>
 

@@ -145,7 +145,8 @@ export async function insertEvent(
   calendarId: string,
   payload: EventPayload,
 ): Promise<InsertResult> {
-  const url = `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events`;
+  // sendUpdates=all → Google sends email invitations to every attendee
+  const url = `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?sendUpdates=all`;
   const res = await gfetch(url, {
     accessToken,
     method: "POST",
@@ -167,7 +168,8 @@ export async function patchEvent(
   payload: Partial<EventPayload>,
   ifMatchEtag?: string,
 ): Promise<PatchResult> {
-  const url = `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
+  // sendUpdates=all → Google notifies attendees of changes by email
+  const url = `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`;
   const body = payload.start && payload.end
     ? ensureZone(payload as EventPayload)
     : payload;
@@ -205,7 +207,8 @@ export async function deleteEvent(
   calendarId: string,
   eventId: string,
 ): Promise<{ ok: boolean; status: number; text?: string }> {
-  const url = `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`;
+  // sendUpdates=all → Google sends cancellation emails to attendees
+  const url = `${API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}?sendUpdates=all`;
   const res = await gfetch(url, { accessToken, method: "DELETE" });
   if (res.status === 401) throw new GoogleAuthError("deleteEvent 401");
   if (res.status === 204 || res.status === 200 || res.status === 410 || res.status === 404) {

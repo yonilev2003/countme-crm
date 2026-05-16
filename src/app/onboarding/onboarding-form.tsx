@@ -80,7 +80,7 @@ export function OnboardingForm({
       return;
     }
 
-    window.location.href = "/dashboard";
+    window.location.href = "/tasks";
   }
 
   return (

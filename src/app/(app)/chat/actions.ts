@@ -2,16 +2,28 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { createClient as createSupaJsClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 
+// Service-role client (server-only). Used to insert other team members into
+// channels we just created — channel_members RLS only allows self-insert.
+function createServiceClient() {
+  return createSupaJsClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+}
+
 // ============================================================
-// createChannel
+// createChannel — group channel with optional member list
 // ============================================================
 
 const createChannelSchema = z.object({
   name: z.string().trim().min(1, "שם נדרש").max(80),
   description: z.string().trim().max(280).optional().or(z.literal("")),
   is_private: z.boolean(),
+  member_ids: z.array(z.string().uuid()).optional().default([]),
 });
 
 export type CreateChannelInput = z.infer<typeof createChannelSchema>;
@@ -46,6 +58,7 @@ export async function createChannel(
     return { error: insertErr?.message ?? "יצירת הערוץ נכשלה" };
   }
 
+  // Always add self.
   const { error: memberErr } = await supabase.from("channel_members").insert({
     channel_id: channel.id,
     profile_id: user.id,
@@ -54,6 +67,70 @@ export async function createChannel(
   if (memberErr) {
     return { error: memberErr.message };
   }
+
+  // Add other selected members via service-role (RLS only allows self-insert).
+  const otherIds = parsed.data.member_ids.filter((id) => id !== user.id);
+  if (otherIds.length > 0) {
+    const service = createServiceClient();
+    const rows = otherIds.map((profile_id) => ({
+      channel_id: channel.id,
+      profile_id,
+    }));
+    await service.from("channel_members").upsert(rows, {
+      onConflict: "channel_id,profile_id",
+    });
+  }
+
+  revalidatePath("/chat");
+  return { id: channel.id };
+}
+
+// ============================================================
+// createSelfNoteChannel — private channel with just the creator
+// ============================================================
+
+export async function createSelfNoteChannel(): Promise<
+  { id: string } | { error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "לא מחובר" };
+
+  // Reuse an existing self-note if one exists
+  const { data: existing } = await supabase
+    .from("channels")
+    .select("id, channel_members!inner(profile_id)")
+    .eq("type", "channel")
+    .eq("is_private", true)
+    .eq("created_by", user.id)
+    .eq("name", "פתקים שלי")
+    .maybeSingle();
+  if (existing?.id) {
+    return { id: existing.id };
+  }
+
+  const { data: channel, error: insertErr } = await supabase
+    .from("channels")
+    .insert({
+      name: "פתקים שלי",
+      description: "מרחב פרטי לפתקים אישיים",
+      type: "channel",
+      is_private: true,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (insertErr || !channel) {
+    return { error: insertErr?.message ?? "יצירת הפתק נכשלה" };
+  }
+
+  await supabase.from("channel_members").insert({
+    channel_id: channel.id,
+    profile_id: user.id,
+    last_read_at: new Date().toISOString(),
+  });
 
   revalidatePath("/chat");
   return { id: channel.id };

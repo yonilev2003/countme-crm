@@ -63,7 +63,7 @@ export async function updateSession(request: NextRequest) {
 
     if (profile?.onboarded_at && pathname.startsWith("/onboarding")) {
       const url = request.nextUrl.clone();
-      url.pathname = "/dashboard";
+      url.pathname = "/tasks";
       return NextResponse.redirect(url);
     }
   }

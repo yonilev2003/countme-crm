@@ -13,6 +13,18 @@ export default async function ChatPage() {
 
   const { channels, unreadCounts } = await loadChannelSidebar(supabase, user.id);
 
+  const { data: teamRaw } = await supabase
+    .from("profiles")
+    .select("id, display_name, full_name, avatar_url, email")
+    .order("display_name", { ascending: true });
+  const teamMembers = (teamRaw ?? []).map((p) => ({
+    id: p.id,
+    display_name: p.display_name,
+    full_name: p.full_name,
+    avatar_url: p.avatar_url,
+    email: p.email,
+  }));
+
   return (
     <div className="-m-6 flex h-[calc(100vh-4rem)] min-h-0 flex-1 overflow-hidden">
       <aside className="hidden w-72 shrink-0 border-e border-slate-200 bg-white md:flex md:flex-col">
@@ -20,6 +32,8 @@ export default async function ChatPage() {
           channels={channels}
           unreadCounts={unreadCounts}
           activeChannelId={null}
+          currentUserId={user.id}
+          teamMembers={teamMembers}
         />
       </aside>
 
