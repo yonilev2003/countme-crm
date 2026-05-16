@@ -29,7 +29,7 @@ export function AppSidebar() {
   return (
     <aside className="hidden w-64 shrink-0 border-s border-slate-200 bg-white md:flex md:flex-col">
       <div className="flex h-16 items-center px-6 border-b border-slate-200">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
+        <Link href="/tasks" className="flex items-center gap-2.5">
           <img src="/countme-logo.svg" alt="" className="h-8 w-8" />
           <span className="font-display text-lg font-bold text-slate-900">
             הנהלת CountMe
