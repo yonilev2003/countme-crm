@@ -29,11 +29,12 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50/40 to-slate-50 p-6">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <div className="mb-8 text-center">
+          <img src="/countme-logo.svg" alt="" className="mx-auto h-14 w-14 mb-4" />
           <h1 className="font-display text-3xl font-bold text-slate-900">
-            countme CRM
+            הנהלת CountMe
           </h1>
           <p className="mt-2 text-sm text-slate-600">
             המערכת הפנימית של הצוות
@@ -61,7 +62,7 @@ export default function LoginPage() {
         )}
 
         <p className="mt-6 text-center text-xs text-slate-500">
-          רק חברי הצוות עם חשבון Google מאושר יוכלו להתחבר
+          הגישה מוגבלת לחברי הנהלת CountMe
         </p>
       </div>
     </main>

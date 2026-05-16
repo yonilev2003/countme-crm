@@ -29,8 +29,11 @@ export function AppSidebar() {
   return (
     <aside className="hidden w-64 shrink-0 border-s border-slate-200 bg-white md:flex md:flex-col">
       <div className="flex h-16 items-center px-6 border-b border-slate-200">
-        <Link href="/dashboard" className="font-display text-xl font-bold text-slate-900">
-          countme <span className="text-brand-600">CRM</span>
+        <Link href="/dashboard" className="flex items-center gap-2.5">
+          <img src="/countme-logo.svg" alt="" className="h-8 w-8" />
+          <span className="font-display text-lg font-bold text-slate-900">
+            הנהלת CountMe
+          </span>
         </Link>
       </div>
 
@@ -56,7 +59,7 @@ export function AppSidebar() {
       </nav>
 
       <div className="border-t border-slate-200 p-3 text-xs text-slate-500">
-        countme CRM • גרסה 0.1
+        הנהלת CountMe • Beta
       </div>
     </aside>
   );
