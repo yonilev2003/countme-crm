@@ -1,23 +1,41 @@
-export default function ChatPage() {
-  return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">צ׳אט</h1>
-        <p className="mt-2 text-slate-600">
-          ערוצי צוות + הודעות פרטיות + שיחות פר-איש
-        </p>
-      </div>
+import { redirect } from "next/navigation";
+import { MessageSquare } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
+import { ChannelList } from "@/components/chat/channel-list";
+import { loadChannelSidebar } from "./_data";
 
-      <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-12 text-center">
-        <div className="inline-flex items-center rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-          Phase F
+export default async function ChatPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { channels, unreadCounts } = await loadChannelSidebar(supabase, user.id);
+
+  return (
+    <div className="-m-6 flex h-[calc(100vh-4rem)] min-h-0 flex-1 overflow-hidden">
+      <aside className="hidden w-72 shrink-0 border-e border-slate-200 bg-white md:flex md:flex-col">
+        <ChannelList
+          channels={channels}
+          unreadCounts={unreadCounts}
+          activeChannelId={null}
+        />
+      </aside>
+
+      <main className="flex min-w-0 flex-1 items-center justify-center bg-slate-50">
+        <div className="flex max-w-md flex-col items-center px-6 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+            <MessageSquare className="h-8 w-8" aria-hidden />
+          </div>
+          <h1 className="mt-4 font-display text-xl font-bold text-slate-900">
+            ברוכים הבאים לצ׳אט
+          </h1>
+          <p className="mt-2 text-sm text-slate-600">
+            בחר ערוץ או שיחה כדי להתחיל
+          </p>
         </div>
-        <h2 className="mt-4 text-xl font-bold text-slate-900">בקרוב</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">
-          Supabase Realtime (Postgres Changes + Presence + Broadcast). ערוצים
-          ציבוריים, DMs אוטומטיים, ושיחות פר-איש דרך פרופיל ה-CRM.
-        </p>
-      </div>
+      </main>
     </div>
   );
 }
