@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { taskSchema, type TaskInput } from "@/lib/tasks";
+import { formatDueRange } from "@/lib/dates";
+import { sendTaskAssignedEmail } from "@/lib/email";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const quickCreateSchema = z.object({
   title: z.string().min(2).max(200),
@@ -41,6 +44,67 @@ function toPayload(input: TaskInput) {
   };
 }
 
+type ProfileLookup = { email: string | null; display_name: string | null; full_name: string | null };
+
+function displayNameOf(p: ProfileLookup | null | undefined): string {
+  if (!p) return "חבר/ת צוות";
+  return (
+    p.display_name?.trim() || p.full_name?.trim() || p.email?.trim() || "חבר/ת צוות"
+  );
+}
+
+/**
+ * Best-effort: fetch assignee email + display info, fetch caller display info, and send the email.
+ * Never throws — failures are logged inside `sendTaskAssignedEmail`.
+ */
+async function notifyTaskAssigned(
+  supabase: SupabaseClient,
+  args: {
+    callerId: string;
+    assigneeId: string;
+    taskTitle: string;
+    taskDescription: string | null;
+    dueStart: string | null;
+    dueEnd: string | null;
+    dueLabel: string | null;
+    priority: "low" | "med" | "high";
+    status: "todo" | "doing" | "done";
+  },
+): Promise<void> {
+  try {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, email, display_name, full_name")
+      .in("id", [args.assigneeId, args.callerId]);
+
+    const assignee = profiles?.find((p) => p.id === args.assigneeId) ?? null;
+    const caller = profiles?.find((p) => p.id === args.callerId) ?? null;
+
+    if (!assignee?.email) {
+      console.warn("[email] assignee has no email — skipping task notification");
+      return;
+    }
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const taskUrl = `${baseUrl}/tasks`;
+
+    await sendTaskAssignedEmail({
+      to: assignee.email,
+      toName: displayNameOf(assignee),
+      taskTitle: args.taskTitle,
+      taskDescription: args.taskDescription,
+      dueDisplay: formatDueRange(args.dueStart, args.dueEnd, args.dueLabel),
+      priority: args.priority,
+      status: args.status,
+      assignedByName: displayNameOf(caller),
+      taskUrl,
+    });
+  } catch (err) {
+    console.error("[email] notifyTaskAssigned failed:", err);
+  }
+}
+
 /**
  * Quick-add path used by the natural-language input on /tasks.
  * Sets sensible defaults (status=todo, priority=med, owner=current user, assignee=current user).
@@ -68,11 +132,26 @@ export async function createTaskFromParse(
       owner_id: user.id,
       assignee_id: user.id,
     })
-    .select("id")
+    .select("id, assignee_id")
     .single();
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  // Quick-add always self-assigns; skip self-spam.
+  if (data.assignee_id && data.assignee_id !== user.id) {
+    await notifyTaskAssigned(supabase, {
+      callerId: user.id,
+      assigneeId: data.assignee_id,
+      taskTitle: parsed.data.title.trim(),
+      taskDescription: null,
+      dueStart: parsed.data.due_start ?? null,
+      dueEnd: parsed.data.due_end ?? null,
+      dueLabel: parsed.data.due_label?.trim() || null,
+      priority: "med",
+      status: "todo",
+    });
   }
 
   revalidatePath("/tasks");
@@ -104,6 +183,20 @@ export async function createTask(
     return { success: false, error: error.message };
   }
 
+  if (payload.assignee_id && payload.assignee_id !== user.id) {
+    await notifyTaskAssigned(supabase, {
+      callerId: user.id,
+      assigneeId: payload.assignee_id,
+      taskTitle: payload.title,
+      taskDescription: payload.description,
+      dueStart: payload.due_start,
+      dueEnd: payload.due_end,
+      dueLabel: payload.due_label,
+      priority: payload.priority,
+      status: payload.status,
+    });
+  }
+
   revalidatePath("/tasks");
   return { success: true, data: { id: data.id } };
 }
@@ -125,12 +218,38 @@ export async function updateTask(
   const { supabase, user } = await requireUser();
   if (!user) return { success: false, error: "לא מחובר" };
 
+  // Capture the previous assignee before updating so we can detect a change.
+  const { data: previous } = await supabase
+    .from("tasks")
+    .select("assignee_id")
+    .eq("id", id)
+    .maybeSingle();
+  const previousAssigneeId = previous?.assignee_id ?? null;
+
   const payload = toPayload(parsed.data);
   // RLS already restricts to owner or assignee, but the .update() call needs to match a row.
   const { error } = await supabase.from("tasks").update(payload).eq("id", id);
 
   if (error) {
     return { success: false, error: error.message };
+  }
+
+  if (
+    payload.assignee_id &&
+    payload.assignee_id !== previousAssigneeId &&
+    payload.assignee_id !== user.id
+  ) {
+    await notifyTaskAssigned(supabase, {
+      callerId: user.id,
+      assigneeId: payload.assignee_id,
+      taskTitle: payload.title,
+      taskDescription: payload.description,
+      dueStart: payload.due_start,
+      dueEnd: payload.due_end,
+      dueLabel: payload.due_label,
+      priority: payload.priority,
+      status: payload.status,
+    });
   }
 
   revalidatePath("/tasks");
