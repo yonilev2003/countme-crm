@@ -24,13 +24,26 @@ npm run dev
 
 ## Database migrations
 
-הרצה ידנית דרך Supabase SQL Editor (MCP לא נגיש לפרויקט הזה):
+### דרך 1 (מומלץ) — סקריפט אוטומטי דרך psql
 
-1. פתח את https://supabase.com/dashboard/project/fsbgxtmxvhxmmtcflmug/sql/new
-2. אם הפרויקט נקי - דלג ל-3. אם יש שאריות ממיגרציה קודמת (errors מסוג "type already exists" / "already member of publication") - **הרץ קודם** `supabase/migrations/0000_reset.sql` (destructive - מוחק את כל ה-CRM tables וה-types שלנו)
-3. הרץ בסדר: `0001_initial_schema.sql` → `0002_rls_policies.sql` → `0003_storage_buckets.sql` → `0004_realtime_publication.sql`
+1. השג connection string מ-https://supabase.com/dashboard/project/fsbgxtmxvhxmmtcflmug/settings/database
+   (בחר "Session pooler", החלף את `[YOUR-PASSWORD]` בסיסמת ה-DB)
+2. הרץ:
+   ```bash
+   export DATABASE_URL='postgresql://postgres.fsbgxtmxvhxmmtcflmug:...@aws-X-eu-central-1.pooler.supabase.com:6543/postgres'
+   ./scripts/apply-migrations.sh           # יציע reset destructive
+   # או:
+   ./scripts/apply-migrations.sh --skip-reset   # אם המסד נקי
+   ```
+   הסקריפט מריץ 0000-0004 בסדר ומאמת בסוף שיש 11 טבלאות + 6 enums + 3 ב-realtime.
 
-כל המיגרציות 0001-0004 הן idempotent - בטוח להריץ אותן שוב.
+### דרך 2 — ידני דרך SQL Editor
+
+1. פתח https://supabase.com/dashboard/project/fsbgxtmxvhxmmtcflmug/sql/new
+2. אם יש שאריות (errors "type already exists") — הדבק והרץ קודם את `supabase/migrations/0000_reset.sql`
+3. הדבק והרץ בסדר: `0001_initial_schema.sql` → `0002_rls_policies.sql` → `0003_storage_buckets.sql` → `0004_realtime_publication.sql`
+
+כל המיגרציות 0001-0004 הן idempotent — בטוח להריץ אותן שוב.
 
 ## Auth flow (critical)
 
