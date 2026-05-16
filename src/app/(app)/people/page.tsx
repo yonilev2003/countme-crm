@@ -1,30 +1,21 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { PeopleTable } from "@/components/people/people-table";
+import { LoadingTable } from "@/components/ui/loading-table";
 import type { OwnerProfile, Person } from "@/lib/people";
 
 export default async function PeoplePage() {
+  // Header-only path: just resolve the user so we can render the page chrome
+  // instantly. The data-heavy query lives in <PeopleSection>, which streams
+  // in via Suspense.
   const supabase = await createClient();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const [peopleRes, profilesRes] = await Promise.all([
-    supabase
-      .from("people")
-      .select(
-        "id, name, email, phone, company, role, status, tags, notes, owner_id, created_at, updated_at",
-      )
-      .order("updated_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("id, display_name, full_name, avatar_url"),
-  ]);
-
-  const people = (peopleRes.data ?? []) as Person[];
-  const profiles = (profilesRes.data ?? []) as OwnerProfile[];
+  if (!user) redirect("/login");
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -42,11 +33,36 @@ export default async function PeoplePage() {
         </Link>
       </div>
 
-      <PeopleTable
-        people={people}
-        currentUserId={user?.id ?? ""}
-        profiles={profiles}
-      />
+      <Suspense fallback={<LoadingTable rows={8} />}>
+        <PeopleSection currentUserId={user.id} />
+      </Suspense>
     </div>
+  );
+}
+
+async function PeopleSection({ currentUserId }: { currentUserId: string }) {
+  const supabase = await createClient();
+
+  const [peopleRes, profilesRes] = await Promise.all([
+    supabase
+      .from("people")
+      .select(
+        "id, name, email, phone, company, role, status, tags, notes, owner_id, created_at, updated_at",
+      )
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("id, display_name, full_name, avatar_url"),
+  ]);
+
+  const people = (peopleRes.data ?? []) as Person[];
+  const profiles = (profilesRes.data ?? []) as OwnerProfile[];
+
+  return (
+    <PeopleTable
+      people={people}
+      currentUserId={currentUserId}
+      profiles={profiles}
+    />
   );
 }
