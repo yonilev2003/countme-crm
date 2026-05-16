@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 const schema = z.object({
@@ -41,6 +42,16 @@ export async function completeOnboarding(input: {
     return { error: error.message };
   }
 
+  // Set the cookie so middleware can skip the DB query on subsequent requests
+  const cookieStore = await cookies();
+  cookieStore.set("co_onb", "1", {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
+
   revalidatePath("/", "layout");
   return { success: true };
 }
+

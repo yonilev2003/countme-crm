@@ -4,6 +4,12 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = ["/login", "/auth", "/privacy", "/terms"];
 const ONBOARDING_SAFE_PATHS = ["/login", "/auth", "/onboarding", "/privacy", "/terms"];
 
+// Cookie that mirrors `profiles.onboarded_at IS NOT NULL`. Set by the
+// onboarding server action; checked by middleware on every request to
+// skip the DB roundtrip. If absent (older sessions), we fall back to DB
+// once and set the cookie ourselves.
+const ONBOARDED_COOKIE = "co_onb";
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -45,28 +51,51 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("onboarded_at")
-      .eq("id", user.id)
-      .maybeSingle();
-
     const isOnboardingPath = ONBOARDING_SAFE_PATHS.some((p) =>
       pathname.startsWith(p),
     );
 
-    if (!profile?.onboarded_at && !isOnboardingPath) {
+    // Fast path: cookie says we're onboarded → skip DB query entirely
+    const cookieOnboarded = request.cookies.get(ONBOARDED_COOKIE)?.value === "1";
+
+    let onboarded = cookieOnboarded;
+
+    if (!cookieOnboarded) {
+      // Fallback: query the DB once and set the cookie for future requests
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("onboarded_at")
+        .eq("id", user.id)
+        .maybeSingle();
+      onboarded = Boolean(profile?.onboarded_at);
+      if (onboarded) {
+        supabaseResponse.cookies.set(ONBOARDED_COOKIE, "1", {
+          httpOnly: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 365, // 1 year
+        });
+      }
+    }
+
+    if (!onboarded && !isOnboardingPath) {
       const url = request.nextUrl.clone();
       url.pathname = "/onboarding";
       return NextResponse.redirect(url);
     }
 
-    if (profile?.onboarded_at && pathname.startsWith("/onboarding")) {
+    if (onboarded && pathname.startsWith("/onboarding")) {
       const url = request.nextUrl.clone();
       url.pathname = "/tasks";
       return NextResponse.redirect(url);
+    }
+  } else {
+    // No user: clear stale onboarding cookie
+    if (request.cookies.has(ONBOARDED_COOKIE)) {
+      supabaseResponse.cookies.delete(ONBOARDED_COOKIE);
     }
   }
 
   return supabaseResponse;
 }
+
