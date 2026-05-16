@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -10,10 +11,15 @@ import {
   FolderOpen,
   MessageSquare,
   Calendar,
+  HelpCircle,
+  X,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+type NavItem = { href: string; label: string; icon: LucideIcon };
+
+export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/dashboard", label: "לוח בקרה", icon: LayoutDashboard },
   { href: "/people", label: "אנשים", icon: Users },
   { href: "/tasks", label: "משימות", icon: CheckSquare },
@@ -21,15 +27,25 @@ const NAV_ITEMS = [
   { href: "/documents", label: "מסמכים", icon: FolderOpen },
   { href: "/chat", label: "צ׳אט", icon: MessageSquare },
   { href: "/calendar", label: "יומן", icon: Calendar },
+  { href: "/help", label: "עזרה", icon: HelpCircle },
 ] as const;
 
-export function AppSidebar() {
-  const pathname = usePathname();
-
+function NavBody({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+}) {
   return (
-    <aside className="hidden w-64 shrink-0 border-s border-slate-200 bg-white md:flex md:flex-col">
-      <div className="flex h-16 items-center px-6 border-b border-slate-200">
-        <Link href="/tasks" className="flex items-center gap-2.5">
+    <>
+      <div className="flex h-16 items-center border-b border-slate-200 px-6">
+        <Link
+          href="/tasks"
+          className="flex items-center gap-2.5"
+          onClick={onNavigate}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/countme-logo.svg" alt="" className="h-8 w-8" />
           <span className="font-display text-lg font-bold text-slate-900">
             הנהלת CountMe
@@ -44,6 +60,7 @@ export function AppSidebar() {
             <Link
               key={href}
               href={href}
+              onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
                 active
@@ -61,6 +78,74 @@ export function AppSidebar() {
       <div className="border-t border-slate-200 p-3 text-xs text-slate-500">
         הנהלת CountMe • Beta
       </div>
+    </>
+  );
+}
+
+export function AppSidebar() {
+  const pathname = usePathname();
+
+  return (
+    <aside className="hidden w-64 shrink-0 border-s border-slate-200 bg-white md:flex md:flex-col">
+      <NavBody pathname={pathname} />
     </aside>
+  );
+}
+
+export function MobileSidebar({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const pathname = usePathname();
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    if (open) {
+      document.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onClose]);
+
+  return (
+    <>
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity md:hidden",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        onClick={onClose}
+        aria-hidden
+      />
+
+      <aside
+        className={cn(
+          "fixed top-0 z-50 flex h-full w-72 flex-col border-s border-slate-200 bg-white shadow-2xl transition-transform md:hidden",
+          open ? "translate-x-0" : "translate-x-full",
+        )}
+        style={{ insetInlineStart: 0 }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="תפריט ניווט"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute end-3 top-3 rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="סגור תפריט"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <NavBody pathname={pathname} onNavigate={onClose} />
+      </aside>
+    </>
   );
 }
