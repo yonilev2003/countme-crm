@@ -2,7 +2,14 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CloudUpload, CheckCircle2, AlertCircle, Loader2, FileIcon } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  CloudUpload,
+  FileIcon,
+  Loader2,
+  Cloud,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { buildStoragePath, humanSize } from "@/lib/storage";
 import { createDocument } from "@/app/(app)/documents/actions";
@@ -29,6 +36,10 @@ type Props = {
   projects: ProjectOption[];
 };
 
+// Uploads run in two phases: the client streams the bytes directly to the
+// `documents` bucket in Supabase Storage (fast, avoids the 20MB server-action
+// body limit), then calls the `createDocument` server action which writes the
+// DB row AND fires a background Drive mirror upload (see actions.ts).
 export function UploadZone({ people, projects }: Props) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +180,10 @@ export function UploadZone({ people, projects }: Props) {
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           עד {humanSize(MAX_BYTES)} לקובץ. תמונות, PDF, מסמכים, גיליונות.
+        </p>
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-brand-700">
+          <Cloud className="h-3.5 w-3.5" />
+          קבצים שיועלו ייסונכרנו אוטומטית ל-Google Drive של הצוות
         </p>
         <input
           ref={inputRef}
