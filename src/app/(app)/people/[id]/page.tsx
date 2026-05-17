@@ -24,7 +24,7 @@ import {
   type Person,
 } from "@/lib/people";
 import { cn } from "@/lib/utils";
-import { deletePerson } from "../actions";
+import { DeletePersonButton } from "./delete-person-button";
 
 type TabKey = "info" | "tasks" | "docs" | "chat";
 const TAB_KEYS: TabKey[] = ["info", "tasks", "docs", "chat"];
@@ -136,7 +136,7 @@ export default async function PersonDetailPage({
                   <Pencil className="h-4 w-4" />
                   עריכה
                 </Link>
-                <DeleteButton id={person.id} name={person.name} />
+                <DeletePersonButton id={person.id} name={person.name} />
               </>
             )}
           </div>
@@ -515,23 +515,3 @@ function ComingSoon() {
   );
 }
 
-function DeleteButton({ id, name }: { id: string; name: string }) {
-  async function action() {
-    "use server";
-    const res = await deletePerson(id);
-    if ("success" in res) {
-      redirect("/people");
-    }
-  }
-  return (
-    <form action={action}>
-      <button
-        type="submit"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-        aria-label={`מחק את ${name}`}
-      >
-        מחק
-      </button>
-    </form>
-  );
-}

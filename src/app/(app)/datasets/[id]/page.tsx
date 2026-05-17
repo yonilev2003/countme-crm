@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { ChevronRight, FileSpreadsheet, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { DatasetTable } from "@/components/datasets/dataset-table";
@@ -10,7 +10,7 @@ import {
   type DatasetOwner,
   type DatasetRow,
 } from "@/lib/datasets";
-import { deleteDataset } from "../actions";
+import { DeleteDatasetButton } from "./delete-dataset-button";
 
 // v1 caps server-side fetch at 10,000 rows. The wizard accepts up to 100,000
 // for storage, but rendering a fully-client interactive table beyond 10k is
@@ -113,7 +113,7 @@ export default async function DatasetDetailPage({ params }: PageProps) {
             </div>
           </div>
           {isOwner && (
-            <DeleteButton id={dataset.id} name={dataset.name} />
+            <DeleteDatasetButton id={dataset.id} name={dataset.name} />
           )}
         </div>
 
@@ -138,23 +138,3 @@ export default async function DatasetDetailPage({ params }: PageProps) {
   );
 }
 
-function DeleteButton({ id, name }: { id: string; name: string }) {
-  async function action() {
-    "use server";
-    const res = await deleteDataset(id);
-    if ("success" in res) {
-      redirect("/datasets");
-    }
-  }
-  return (
-    <form action={action}>
-      <button
-        type="submit"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-        aria-label={`מחק את ${name}`}
-      >
-        מחק דאטהסט
-      </button>
-    </form>
-  );
-}

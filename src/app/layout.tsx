@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Heebo, Rubik } from "next/font/google";
 
 const heebo = Heebo({
@@ -17,8 +17,15 @@ const rubik = Rubik({
 });
 
 export const metadata: Metadata = {
-  title: "countme CRM",
+  title: "הנהלת CountMe",
   description: "המערכת הפנימית של הצוות",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#A88A5B",
 };
 
 export default function RootLayout({
