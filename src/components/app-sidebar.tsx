@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Calendar,
   HelpCircle,
+  ShieldCheck,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -32,11 +33,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/help", label: "עזרה", icon: HelpCircle },
 ] as const;
 
+export const ADMIN_NAV_ITEMS: readonly NavItem[] = [
+  { href: "/admin/users", label: "ניהול משתמשים", icon: ShieldCheck },
+] as const;
+
 function NavBody({
   pathname,
+  isAdmin,
   onNavigate,
 }: {
   pathname: string;
+  isAdmin: boolean;
   onNavigate?: () => void;
 }) {
   return (
@@ -75,6 +82,32 @@ function NavBody({
             </Link>
           );
         })}
+
+        {isAdmin && (
+          <>
+            <div className="my-1 border-t border-slate-100" />
+            {ADMIN_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+              const active =
+                pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                    active
+                      ? "bg-brand-50 text-brand-700"
+                      : "text-slate-700 hover:bg-slate-100",
+                  )}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       <div className="border-t border-slate-200 p-3 text-xs text-slate-500">
@@ -84,12 +117,12 @@ function NavBody({
   );
 }
 
-export function AppSidebar() {
+export function AppSidebar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
 
   return (
     <aside className="hidden w-64 shrink-0 border-s border-slate-200 bg-white md:flex md:flex-col">
-      <NavBody pathname={pathname} />
+      <NavBody pathname={pathname} isAdmin={isAdmin} />
     </aside>
   );
 }
@@ -97,9 +130,11 @@ export function AppSidebar() {
 export function MobileSidebar({
   open,
   onClose,
+  isAdmin,
 }: {
   open: boolean;
   onClose: () => void;
+  isAdmin: boolean;
 }) {
   const pathname = usePathname();
 
@@ -146,7 +181,7 @@ export function MobileSidebar({
         >
           <X className="h-5 w-5" />
         </button>
-        <NavBody pathname={pathname} onNavigate={onClose} />
+        <NavBody pathname={pathname} isAdmin={isAdmin} onNavigate={onClose} />
       </aside>
     </>
   );

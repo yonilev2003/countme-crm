@@ -104,7 +104,7 @@ export function Topbar({
         </div>
       </header>
 
-      <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} isAdmin={isAdmin} />
     </>
   );
 }
