@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, X, Pencil } from "lucide-react";
+import { Check, X, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toggleUserAdmin, updateUserRole } from "./actions";
+import { toggleUserAdmin, updateUserRole, deleteUser } from "./actions";
 
 export type UserRow = {
   id: string;
@@ -32,6 +32,7 @@ export function UsersTable({ users, currentUserId }: Props) {
             <th className="px-4 py-3 text-start font-medium">תפקיד</th>
             <th className="px-4 py-3 text-start font-medium">אדמין</th>
             <th className="px-4 py-3 text-start font-medium">הצטרף</th>
+            <th className="px-4 py-3" />
           </tr>
         </thead>
         <tbody>
@@ -100,6 +101,11 @@ function UserRowView({ user, isSelf }: { user: UserRow; isSelf: boolean }) {
         <AdminToggle id={user.id} value={user.is_admin} disabled={isSelf} />
       </td>
       <td className="px-4 py-3 text-xs text-slate-500">{created}</td>
+      <td className="px-4 py-3 text-end">
+        {!isSelf && (
+          <DeleteButton id={user.id} displayName={displayName} />
+        )}
+      </td>
     </tr>
   );
 }
@@ -240,6 +246,71 @@ function AdminToggle({
             enabled ? "start-[22px]" : "start-0.5",
           )}
         />
+      </button>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function DeleteButton({
+  id,
+  displayName,
+}: {
+  id: string;
+  displayName: string;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function handleDelete() {
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteUser(id);
+      if ("error" in result) {
+        setError(result.error);
+        setConfirming(false);
+        return;
+      }
+    });
+  }
+
+  if (confirming) {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-600">למחוק את {displayName}?</span>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={pending}
+            className="inline-flex items-center justify-center rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {pending ? "מוחק…" : "כן, מחק"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setConfirming(false); setError(null); }}
+            disabled={pending}
+            className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            ביטול
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        title={`מחק את ${displayName}`}
+        className="inline-flex items-center justify-center rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"
+      >
+        <Trash2 className="h-4 w-4" />
       </button>
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
