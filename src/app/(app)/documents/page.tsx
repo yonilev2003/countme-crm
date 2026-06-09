@@ -25,7 +25,7 @@ export default async function DocumentsPage() {
       supabase
         .from("documents")
         .select(
-          "id, name, storage_path, mime_type, size, person_id, project_id, owner_id, uploaded_at, drive_file_id, drive_web_view_link",
+          "id, name, storage_path, mime_type, size, person_id, project_id, owner_id, uploaded_at, drive_file_id, drive_web_view_link, drive_sync_status",
         )
         .order("uploaded_at", { ascending: false }),
       supabase
@@ -68,6 +68,7 @@ export default async function DocumentsPage() {
         people={people}
         projects={projects}
         currentUserId={user?.id ?? null}
+        driveConnected={driveConnected}
       />
     </div>
   );

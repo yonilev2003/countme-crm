@@ -11,6 +11,7 @@ type Props = {
   people: PersonOption[];
   projects: ProjectOption[];
   currentUserId: string | null;
+  driveConnected: boolean;
 };
 
 const NONE = "__none__";
@@ -22,6 +23,7 @@ export function DocumentGrid({
   people,
   projects,
   currentUserId,
+  driveConnected,
 }: Props) {
   const [personFilter, setPersonFilter] = useState<string>(ALL);
   const [projectFilter, setProjectFilter] = useState<string>(ALL);
@@ -154,6 +156,7 @@ export function DocumentGrid({
               doc={doc}
               owner={ownerById.get(doc.owner_id) ?? null}
               currentUserId={currentUserId}
+              driveConnected={driveConnected}
               personName={doc.person_id ? personById.get(doc.person_id) ?? null : null}
               projectName={
                 doc.project_id ? projectById.get(doc.project_id) ?? null : null

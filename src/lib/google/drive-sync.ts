@@ -26,6 +26,11 @@ import {
   listFolderContents,
   type DriveFile,
 } from "./drive";
+import { mirrorDocumentToDrive } from "./drive-mirror";
+
+// Per-sweep cap on CRM → Drive repair uploads. Keeps a single sync run bounded;
+// the recurring interval drains any remaining backlog over subsequent runs.
+const REPAIR_BATCH = 25;
 
 export type DriveSyncResult = {
   pulled: number;
@@ -114,7 +119,7 @@ async function syncOnce(forceRefresh: boolean): Promise<DriveSyncResult> {
   const errors: string[] = [];
   let pulled = 0;
   let deleted = 0;
-  const pushed = 0; // CRM → Drive uploads happen at create-time, not during sync
+  let pushed = 0; // CRM → Drive repair uploads, counted in the pass below
 
   // Load Drive config (folder + token will be checked inside the helper).
   const { data: cfg, error: cfgErr } = await db
@@ -191,6 +196,9 @@ async function syncOnce(forceRefresh: boolean): Promise<DriveSyncResult> {
           size: parseSize(file.size),
           drive_modified_time: driveModified,
           drive_web_view_link: file.webViewLink ?? null,
+          // Seeing the file live in Drive confirms it's synced.
+          drive_sync_status: "synced",
+          drive_synced_at: driveModified,
         })
         .eq("id", existing.id);
       if (upErr) {
@@ -225,6 +233,9 @@ async function syncOnce(forceRefresh: boolean): Promise<DriveSyncResult> {
       drive_modified_time: driveModified,
       drive_web_view_link: file.webViewLink ?? null,
       drive_mime_type: file.mimeType,
+      // Originated in Drive → already synced by definition.
+      drive_sync_status: "synced",
+      drive_synced_at: driveModified,
     });
     if (insErr) {
       errors.push(`insert ${file.id}: ${insErr.message}`);
@@ -258,6 +269,35 @@ async function syncOnce(forceRefresh: boolean): Promise<DriveSyncResult> {
       } else {
         deleted += 1;
       }
+    }
+  }
+
+  // Repair pass (CRM → Drive): re-push any CRM-backed file that still hasn't
+  // reached Drive — a create-time mirror that failed, was dropped when the
+  // serverless instance froze, or ran while Drive was disconnected. Drive-only
+  // rows (storage_path 'drive:...') have no local bytes to push, so skip them.
+  const { data: needPush, error: needErr } = await db
+    .from("documents")
+    .select("id, name, storage_path, mime_type")
+    .in("drive_sync_status", ["pending", "failed"])
+    .not("storage_path", "like", "drive:%")
+    .limit(REPAIR_BATCH);
+  if (needErr) {
+    errors.push(`list pending push: ${needErr.message}`);
+  } else {
+    for (const row of needPush ?? []) {
+      const status = await mirrorDocumentToDrive(db, {
+        documentId: row.id,
+        storagePath: row.storage_path,
+        fileName: row.name,
+        mimeType: row.mime_type ?? "application/octet-stream",
+      });
+      if (status === "synced") {
+        pushed += 1;
+      } else if (status === "failed") {
+        errors.push(`push ${row.id} failed`);
+      }
+      // "skipped" can't happen here (Drive is connected if we got this far).
     }
   }
 

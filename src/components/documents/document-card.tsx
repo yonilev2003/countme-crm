@@ -16,12 +16,19 @@ import {
   Image as ImageIcon,
   User,
   Briefcase,
+  Cloud,
+  CloudOff,
+  RefreshCw,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { he } from "date-fns/locale";
 import { createClient } from "@/lib/supabase/client";
 import { humanSize, mimeIcon, getSignedDownloadUrl } from "@/lib/storage";
-import { deleteDocument, getDownloadUrl } from "@/app/(app)/documents/actions";
+import {
+  deleteDocument,
+  getDownloadUrl,
+  retryDriveSync,
+} from "@/app/(app)/documents/actions";
 
 export type DocumentRow = {
   id: string;
@@ -35,6 +42,7 @@ export type DocumentRow = {
   uploaded_at: string;
   drive_file_id: string | null;
   drive_web_view_link: string | null;
+  drive_sync_status: string | null;
 };
 
 export type OwnerInfo = {
@@ -51,6 +59,7 @@ type Props = {
   currentUserId: string | null;
   personName: string | null;
   projectName: string | null;
+  driveConnected: boolean;
 };
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -70,12 +79,14 @@ export function DocumentCard({
   currentUserId,
   personName,
   projectName,
+  driveConnected,
 }: Props) {
   const router = useRouter();
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [retrying, startRetry] = useTransition();
   const isImage = (doc.mime_type ?? "").startsWith("image/");
   // Drive-only rows (created remotely in Drive) have no Supabase Storage copy.
   // Their storage_path is a synthetic "drive:<id>" sentinel.
@@ -151,6 +162,25 @@ export function DocumentCard({
     });
   }
 
+  function handleRetryDrive() {
+    setActionError(null);
+    startRetry(async () => {
+      const result = await retryDriveSync(doc.id);
+      if ("error" in result) {
+        setActionError(result.error);
+        return;
+      }
+      if (result.status === "failed") {
+        setActionError("הסנכרון ל-Drive נכשל שוב. ננסה אוטומטית ברקע.");
+      }
+      router.refresh();
+    });
+  }
+
+  // Drive-only rows are by definition already in Drive; CRM rows show their
+  // mirror state only once a team Drive is connected.
+  const showDriveStatus = driveConnected && !isDriveOnly;
+
   return (
     <div className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:border-brand-300 hover:shadow-sm">
       <div className="relative aspect-[4/3] w-full bg-brand-50">
@@ -224,6 +254,15 @@ export function DocumentCard({
           <div className="text-xs text-slate-400">{uploadedAgo}</div>
         )}
 
+        {showDriveStatus && (
+          <DriveStatusChip
+            status={doc.drive_sync_status}
+            canRetry={isOwner}
+            retrying={retrying}
+            onRetry={handleRetryDrive}
+          />
+        )}
+
         {(personName || projectName) && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {personName && (
@@ -247,6 +286,66 @@ export function DocumentCard({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Compact per-document Drive sync indicator. "synced" is confirmed in Drive;
+ * "failed" offers the owner a retry; anything else (pending/null) is in-flight
+ * and will be reconciled by the background sweep.
+ */
+function DriveStatusChip({
+  status,
+  canRetry,
+  retrying,
+  onRetry,
+}: {
+  status: string | null;
+  canRetry: boolean;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
+  if (status === "synced") {
+    return (
+      <div className="mt-2">
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+          <Cloud className="h-3 w-3" />
+          ב-Drive
+        </span>
+      </div>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+          <CloudOff className="h-3 w-3" />
+          סנכרון נכשל
+        </span>
+        {canRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={retrying}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={retrying ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
+            {retrying ? "מסנכרן..." : "נסה שוב"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // pending / null — mirror is in progress or queued for the next sweep.
+  return (
+    <div className="mt-2">
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+        <RefreshCw className={retrying ? "h-3 w-3 animate-spin" : "h-3 w-3"} />
+        ממתין לסנכרון
+      </span>
     </div>
   );
 }

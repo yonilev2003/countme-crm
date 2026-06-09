@@ -9,6 +9,7 @@ import {
   FileIcon,
   Loader2,
   Cloud,
+  CloudOff,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { buildStoragePath, humanSize } from "@/lib/storage";
@@ -23,12 +24,18 @@ import {
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB to match next.config.ts bodySizeLimit
 
 type ItemStatus = "uploading" | "done" | "error";
+// Outcome of the synchronous Drive mirror reported by createDocument:
+//   synced  — confirmed in the team Drive
+//   failed  — saved locally, Drive upload failed (auto-retried in background)
+//   skipped — Drive isn't connected, nothing to mirror
+type DriveSync = "synced" | "failed" | "skipped";
 type Item = {
   id: string;
   name: string;
   size: number;
   status: ItemStatus;
   message?: string;
+  drive?: DriveSync;
 };
 
 type Props = {
@@ -95,7 +102,14 @@ export function UploadZone({ people, projects }: Props) {
         return;
       }
 
-      updateItem(itemId, { status: "done" });
+      updateItem(itemId, {
+        status: "done",
+        drive: result.drive,
+        message:
+          result.drive === "failed"
+            ? "נשמר. סנכרון ל-Drive נכשל — ינוסה שוב אוטומטית"
+            : undefined,
+      });
     },
     [link, updateItem],
   );
@@ -232,10 +246,21 @@ export function UploadZone({ people, projects }: Props) {
                   </div>
                   <div className="text-xs text-slate-500">
                     {humanSize(it.size)}
-                    {it.message ? ` · ${it.message}` : ""}
+                    {it.message ? (
+                      <span
+                        className={
+                          it.status === "done" && it.drive === "failed"
+                            ? "text-amber-700"
+                            : undefined
+                        }
+                      >
+                        {" · "}
+                        {it.message}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
-                <StatusBadge status={it.status} />
+                <StatusBadge status={it.status} drive={it.drive} />
               </li>
             ))}
           </ul>
@@ -245,7 +270,13 @@ export function UploadZone({ people, projects }: Props) {
   );
 }
 
-function StatusBadge({ status }: { status: ItemStatus }) {
+function StatusBadge({
+  status,
+  drive,
+}: {
+  status: ItemStatus;
+  drive?: DriveSync;
+}) {
   if (status === "uploading") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
@@ -255,6 +286,25 @@ function StatusBadge({ status }: { status: ItemStatus }) {
     );
   }
   if (status === "done") {
+    // Drive upload failed: the file is saved locally and will be retried, so
+    // signal it as a warning (amber) rather than a hard error.
+    if (drive === "failed") {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+          <CloudOff className="h-3.5 w-3.5" />
+          נשמר, ללא Drive
+        </span>
+      );
+    }
+    if (drive === "synced") {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+          <Cloud className="h-3.5 w-3.5" />
+          סונכרן ל-Drive
+        </span>
+      );
+    }
+    // drive "skipped"/undefined — Drive not connected; just confirm the save.
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
         <CheckCircle2 className="h-3.5 w-3.5" />

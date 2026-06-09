@@ -3,15 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSignedDownloadUrl } from "@/lib/storage";
 import {
   GoogleAuthError,
   getValidAccessTokenForTeamDrive,
   trashFile,
-  uploadFile,
 } from "@/lib/google/drive";
+import {
+  adminDb,
+  mirrorDocumentToDrive,
+  type MirrorStatus,
+} from "@/lib/google/drive-mirror";
 
 // 20 MB matches next.config.ts serverActions.bodySizeLimit and the upload zone UX.
 const MAX_SIZE_BYTES = 20 * 1024 * 1024;
@@ -27,117 +29,9 @@ const createDocumentSchema = z.object({
 
 export type CreateDocumentInput = z.input<typeof createDocumentSchema>;
 
-function adminDb(): SupabaseClient {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing Supabase service role env vars");
-  return createSupabaseClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
-
-/**
- * Pulls bytes back out of Supabase Storage so we can mirror the file into
- * Drive. Uses the service-role client because we may be operating from a
- * background context where the user's session cookie has expired.
- */
-async function downloadFromStorage(
-  db: SupabaseClient,
-  storagePath: string,
-): Promise<{ data: Blob; mimeType: string } | null> {
-  const { data, error } = await db.storage
-    .from("documents")
-    .download(storagePath);
-  if (error || !data) return null;
-  return {
-    data,
-    mimeType: data.type || "application/octet-stream",
-  };
-}
-
-/**
- * Fire-and-forget: upload a freshly-created document to the team Drive and
- * stamp the resulting metadata back onto the row. Silently skips when Drive
- * isn't connected (callers shouldn't fail just because Drive is offline).
- *
- * Runs one access-token refresh + retry on 401.
- */
-async function mirrorToDrive(
-  documentId: string,
-  storagePath: string,
-  fileName: string,
-  mimeType: string,
-): Promise<void> {
-  const db = adminDb();
-
-  // Bail early when Drive is not configured.
-  const { data: cfg } = await db
-    .from("team_config")
-    .select("shared_drive_refresh_token, shared_drive_folder_id")
-    .eq("id", 1)
-    .maybeSingle();
-  if (!cfg?.shared_drive_refresh_token || !cfg.shared_drive_folder_id) {
-    return;
-  }
-
-  const folderId = cfg.shared_drive_folder_id;
-
-  const downloaded = await downloadFromStorage(db, storagePath);
-  if (!downloaded) {
-    console.warn(
-      `[drive-mirror] cannot read ${storagePath} from Supabase Storage`,
-    );
-    return;
-  }
-
-  const effectiveMime = mimeType || downloaded.mimeType;
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const accessToken = await getValidAccessTokenForTeamDrive(
-        db,
-        attempt === 1,
-      );
-      const file = await uploadFile(
-        accessToken,
-        folderId,
-        fileName,
-        effectiveMime,
-        downloaded.data,
-      );
-
-      const { error: upErr } = await db
-        .from("documents")
-        .update({
-          drive_file_id: file.id,
-          drive_modified_time: file.modifiedTime
-            ? new Date(file.modifiedTime).toISOString()
-            : new Date().toISOString(),
-          drive_web_view_link: file.webViewLink ?? null,
-          drive_mime_type: file.mimeType ?? effectiveMime,
-        })
-        .eq("id", documentId);
-      if (upErr) {
-        console.warn(
-          `[drive-mirror] failed to write back drive metadata for ${documentId}:`,
-          upErr.message,
-        );
-      }
-      return;
-    } catch (err) {
-      if (err instanceof GoogleAuthError && attempt === 0) continue;
-      console.warn(
-        `[drive-mirror] upload failed for ${documentId}:`,
-        err instanceof Error ? err.message : String(err),
-      );
-      return;
-    }
-  }
-}
-
 export async function createDocument(
   input: CreateDocumentInput,
-): Promise<{ success: true; id: string } | { error: string }> {
+): Promise<{ success: true; id: string; drive: MirrorStatus } | { error: string }> {
   const parsed = createDocumentSchema.safeParse(input);
   if (!parsed.success) {
     return { error: "פרטי מסמך לא תקינים" };
@@ -180,18 +74,66 @@ export async function createDocument(
     return { error: error?.message ?? "שמירת מסמך נכשלה" };
   }
 
-  // Fire-and-forget Drive mirror — non-blocking so the user UX stays snappy.
-  // Errors are logged but do not surface back to the client.
+  // Mirror to Drive synchronously so the caller learns whether the file
+  // actually reached Drive (immediate verification). The helper never throws
+  // and marks the row 'failed'/'pending' on any problem, so a slow or failed
+  // Drive upload can't break the save — the background sweep repairs it.
   const documentId = data.id;
-  void mirrorToDrive(
+  const drive = await mirrorDocumentToDrive(adminDb(), {
     documentId,
-    parsed.data.storage_path,
-    parsed.data.name,
-    parsed.data.mime_type ?? "application/octet-stream",
-  );
+    storagePath: parsed.data.storage_path,
+    fileName: parsed.data.name,
+    mimeType: parsed.data.mime_type ?? "application/octet-stream",
+  });
 
   revalidatePath("/documents");
-  return { success: true, id: documentId };
+  return { success: true, id: documentId, drive };
+}
+
+/**
+ * Manually re-attempts the Drive mirror for a single document. Used by the
+ * "retry" affordance on a card whose create-time mirror failed. Owner-only.
+ */
+export async function retryDriveSync(
+  id: string,
+): Promise<{ status: MirrorStatus } | { error: string }> {
+  if (!z.string().uuid().safeParse(id).success) {
+    return { error: "מזהה לא תקין" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "לא מחובר" };
+
+  const { data: doc, error } = await supabase
+    .from("documents")
+    .select("id, owner_id, name, storage_path, mime_type")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!doc) return { error: "מסמך לא נמצא" };
+  if (doc.owner_id !== user.id) {
+    return { error: "אין הרשאה לסנכרן מסמך זה" };
+  }
+  if (
+    typeof doc.storage_path === "string" &&
+    doc.storage_path.startsWith("drive:")
+  ) {
+    return { error: "מסמך זה קיים רק ב-Drive" };
+  }
+
+  const status = await mirrorDocumentToDrive(adminDb(), {
+    documentId: doc.id,
+    storagePath: doc.storage_path,
+    fileName: doc.name,
+    mimeType: doc.mime_type ?? "application/octet-stream",
+  });
+
+  revalidatePath("/documents");
+  return { status };
 }
 
 export async function deleteDocument(
