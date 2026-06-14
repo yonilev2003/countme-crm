@@ -93,9 +93,15 @@ export async function getSignedDownloadUrl(
 }
 
 /**
- * Builds a storage path that satisfies the bucket's RLS prefix policy.
- * Strips characters that mis-render or break URLs, keeps Hebrew letters
- * (Storage supports them), and prefixes a timestamp to avoid collisions.
+ * Builds a storage path that satisfies both the bucket's RLS prefix policy
+ * AND Supabase Storage's object-key validation, then prefixes a timestamp to
+ * avoid collisions.
+ *
+ * NOTE: Storage keys are NOT Unicode-safe. The server validates keys against
+ * roughly /^[\w/!\-.*'() &$@=;:+,?]*$/, where `\w` is ASCII-only — so Hebrew
+ * (or any non-ASCII) letters trigger an "Invalid key" error on upload. The
+ * key is therefore reduced to ASCII here; the original human-readable name
+ * (Hebrew included) is preserved separately in `documents.name` for display.
  */
 export function buildStoragePath(ownerId: string, filename: string): string {
   const safe = sanitizeFilename(filename);
@@ -104,9 +110,23 @@ export function buildStoragePath(ownerId: string, filename: string): string {
 
 function sanitizeFilename(name: string): string {
   const trimmed = (name || "").trim();
-  // Replace whitespace runs with a single hyphen, drop chars that confuse
-  // URLs and shells. Keep Unicode letters/digits/dot/underscore/hyphen.
-  const collapsed = trimmed.replace(/\s+/g, "-");
-  const cleaned = collapsed.replace(/[^\p{L}\p{N}._-]+/gu, "");
-  return cleaned || `file-${Date.now()}`;
+
+  // Split off the extension so it survives even when the base name is
+  // entirely non-ASCII (e.g. a fully-Hebrew filename).
+  const dot = trimmed.lastIndexOf(".");
+  const hasExt = dot > 0 && dot < trimmed.length - 1;
+  const rawBase = hasExt ? trimmed.slice(0, dot) : trimmed;
+  const rawExt = hasExt ? trimmed.slice(dot + 1) : "";
+
+  // Keep only ASCII letters/digits/dot/underscore/hyphen; collapse every
+  // other run (spaces, Hebrew, punctuation) to a single hyphen and trim
+  // stray separators from the ends.
+  const base = rawBase
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  const ext = rawExt.replace(/[^A-Za-z0-9]+/g, "").toLowerCase();
+
+  const safeBase = base || "file";
+  return ext ? `${safeBase}.${ext}` : safeBase;
 }
