@@ -39,3 +39,7 @@ begin
   return new;
 end;
 $$;
+
+-- These SECURITY DEFINER functions are trigger helpers, not public RPCs.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.set_admin_for_cto() from public, anon, authenticated;
