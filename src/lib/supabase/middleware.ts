@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth", "/privacy", "/terms"];
+const PUBLIC_PATHS = ["/login", "/auth", "/privacy", "/terms", "/api/health"];
 const ONBOARDING_SAFE_PATHS = ["/login", "/auth", "/onboarding", "/privacy", "/terms"];
 
 // Cookie that mirrors `profiles.onboarded_at IS NOT NULL`. Set by the
