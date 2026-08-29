@@ -1,10 +1,11 @@
-// POST /api/agent/tasks — create_task (Personal tier: always allowed;
-// assigning to someone else on creation just triggers the usual email
-// notification, same as the /tasks UI).
+// POST /api/agent/tasks — create_task.
+// Any valid personal token may create a task for its own user. Assigning a
+// newly-created task to someone else requires admin privileges; this keeps
+// personal tokens from silently creating work on behalf of other teammates.
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireCaller, badRequest } from "@/lib/agent/respond";
+import { requireCaller, badRequest, forbidden } from "@/lib/agent/respond";
 import { createAgentServiceClient } from "@/lib/agent/auth";
 import { AGENT_TASK_SELECT } from "@/lib/agent/tasks-select";
 import { notifyTaskAssigned } from "@/lib/task-notifications";
@@ -38,6 +39,10 @@ export async function POST(request: Request) {
 
   const supabase = createAgentServiceClient();
   const assigneeId = input.assignee_id ?? caller.userId;
+
+  if (assigneeId !== caller.userId && !caller.isAdmin) {
+    return forbidden("הקצאת משימה חדשה למשתמש אחר דורשת הרשאת אדמין");
+  }
 
   const { data, error } = await supabase
     .from("tasks")
