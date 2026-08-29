@@ -4,9 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { taskSchema, type TaskInput } from "@/lib/tasks";
-import { formatDueRange } from "@/lib/dates";
-import { sendTaskAssignedEmail } from "@/lib/email";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { notifyTaskAssigned } from "@/lib/task-notifications";
 
 const quickCreateSchema = z.object({
   title: z.string().min(2).max(200),
@@ -42,67 +40,6 @@ function toPayload(input: TaskInput) {
     person_id: input.person_id || null,
     project_id: input.project_id || null,
   };
-}
-
-type ProfileLookup = { email: string | null; display_name: string | null; full_name: string | null };
-
-function displayNameOf(p: ProfileLookup | null | undefined): string {
-  if (!p) return "חבר/ת צוות";
-  return (
-    p.display_name?.trim() || p.full_name?.trim() || p.email?.trim() || "חבר/ת צוות"
-  );
-}
-
-/**
- * Best-effort: fetch assignee email + display info, fetch caller display info, and send the email.
- * Never throws — failures are logged inside `sendTaskAssignedEmail`.
- */
-async function notifyTaskAssigned(
-  supabase: SupabaseClient,
-  args: {
-    callerId: string;
-    assigneeId: string;
-    taskTitle: string;
-    taskDescription: string | null;
-    dueStart: string | null;
-    dueEnd: string | null;
-    dueLabel: string | null;
-    priority: "low" | "med" | "high";
-    status: "todo" | "doing" | "done";
-  },
-): Promise<void> {
-  try {
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, email, display_name, full_name")
-      .in("id", [args.assigneeId, args.callerId]);
-
-    const assignee = profiles?.find((p) => p.id === args.assigneeId) ?? null;
-    const caller = profiles?.find((p) => p.id === args.callerId) ?? null;
-
-    if (!assignee?.email) {
-      console.warn("[email] assignee has no email — skipping task notification");
-      return;
-    }
-
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const taskUrl = `${baseUrl}/tasks`;
-
-    await sendTaskAssignedEmail({
-      to: assignee.email,
-      toName: displayNameOf(assignee),
-      taskTitle: args.taskTitle,
-      taskDescription: args.taskDescription,
-      dueDisplay: formatDueRange(args.dueStart, args.dueEnd, args.dueLabel),
-      priority: args.priority,
-      status: args.status,
-      assignedByName: displayNameOf(caller),
-      taskUrl,
-    });
-  } catch (err) {
-    console.error("[email] notifyTaskAssigned failed:", err);
-  }
 }
 
 /**
