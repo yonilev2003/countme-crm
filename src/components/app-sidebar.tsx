@@ -14,6 +14,7 @@ import {
   Calendar,
   HelpCircle,
   ShieldCheck,
+  KeyRound,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/datasets", label: "דאטה", icon: Database },
   { href: "/chat", label: "צ׳אט", icon: MessageSquare },
   { href: "/calendar", label: "יומן", icon: Calendar },
+  { href: "/settings/agent", label: "מפתח AI", icon: KeyRound },
   { href: "/help", label: "עזרה", icon: HelpCircle },
 ] as const;
 
