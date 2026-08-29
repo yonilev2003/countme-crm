@@ -72,12 +72,22 @@ curl -s -X POST https://countme-crm.vercel.app/api/agent/tasks/<id>/assign \
   -d '{"assignee_id":"<uuid-של-רוי>"}'
 ```
 
+## חיבור ל-Claude (MCP) ול-ChatGPT (Custom GPT Actions)
+
+- **Claude**: `mcp-server/` הוא שרת MCP מקומי (stdio) שעוטף את 12 הפעולות
+  האלה כ-tools. הוראות התקנה ב-`mcp-server/README.md`. רץ אצל המשתמש
+  עצמו (לא בפרודקשן), עם הטוקן האישי שלו כמשתנה סביבה.
+- **ChatGPT**: `docs/agent-api.openapi.yaml` הוא ה-schema המלא ל-12
+  ה-operations, מוכן להדבקה תחת GPT Builder → Actions (bearer auth).
+
+שני המסלולים עוטפים בדיוק את אותו HTTP contract — אין שכפול לוגיקה,
+ואין חשיפה של SQL בשום מסלול.
+
 ## מה עוד לא קיים (מכוון)
 
 - אין endpoint ל-SQL חופשי — בכוונה. כל פעולה חדשה = route חדש עם ולידציה
   והרשאה משלו.
-- אין עדיין wrapper רשמי ל-MCP או ל-Custom GPT Actions — ה-API עצמו הוא
-  ה-contract; חיבור בפועל ל-Claude/ChatGPT דורש הגדרת custom connector /
-  Action שמצביע לכתובות למעלה.
 - מחיקת משימות (`delete_task`) לא נחשפה כאן בכוונה — פעולה הרסנית שלא
   התבקשה; זמינה רק דרך הממשק הרגיל.
+- אין formal evaluations לשרת ה-MCP (ר' `mcp-server/README.md`) — היקף
+  מכוון לצוות פנימי של 3 אנשים, לא כלי ציבורי.
