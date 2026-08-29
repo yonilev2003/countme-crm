@@ -1,0 +1,345 @@
+openapi: 3.1.0
+info:
+  title: CountMe Agent API
+  version: "1.0.0"
+  description: >
+    Narrow, validated operations for reading and updating CountMe CRM data —
+    no free-form SQL. Every request is scoped to the caller identified by
+    their personal bearer token (Settings → מפתח AI in the app). See
+    docs/agent-api.md for the full human-readable contract.
+servers:
+  - url: https://countme-crm.vercel.app
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Personal token from Settings → מפתח AI, prefixed "cme_".
+  schemas:
+    ProfileRef:
+      type: object
+      nullable: true
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, nullable: true }
+        display_name: { type: string, nullable: true }
+        full_name: { type: string, nullable: true }
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [todo, doing, done] }
+        priority: { type: string, enum: [low, med, high] }
+        due_start: { type: string, format: date, nullable: true }
+        due_end: { type: string, format: date, nullable: true }
+        due_label: { type: string, nullable: true }
+        owner_id: { type: string, format: uuid }
+        assignee_id: { type: string, format: uuid, nullable: true }
+        project_id: { type: string, format: uuid, nullable: true }
+        person_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        assignee: { $ref: "#/components/schemas/ProfileRef" }
+        owner: { $ref: "#/components/schemas/ProfileRef" }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        message: { type: string }
+paths:
+  /api/agent/tasks/mine:
+    get:
+      operationId: get_my_tasks
+      summary: Get the caller's own tasks
+      parameters:
+        - name: include_done
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+  /api/agent/tasks/overdue:
+    get:
+      operationId: get_overdue_tasks
+      summary: Get overdue tasks (self, or team if admin)
+      parameters:
+        - name: scope
+          in: query
+          schema: { type: string, enum: [self, team], default: self }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scope: { type: string }
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+  /api/agent/tasks/unassigned:
+    get:
+      operationId: get_unassigned_tasks
+      summary: Get open tasks with no assignee
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+  /api/agent/tasks/blocked:
+    get:
+      operationId: get_blocked_work
+      summary: Get in-progress tasks that are now overdue
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  definition: { type: string }
+                  tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+  /api/agent/team/overview:
+    get:
+      operationId: get_team_overview
+      summary: Per-person open/overdue/done task counts across the team
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  team:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user_id: { type: string, format: uuid }
+                        name: { type: string, nullable: true }
+                        is_admin: { type: boolean }
+                        role: { type: string, nullable: true }
+                        open_tasks: { type: integer }
+                        overdue_tasks: { type: integer }
+                        done_tasks: { type: integer }
+                  unassigned_open_tasks: { type: integer }
+  /api/agent/projects/{id}/status:
+    get:
+      operationId: get_project_status
+      summary: Task breakdown and open tasks for one project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project: { type: object }
+                  task_counts:
+                    type: object
+                    properties:
+                      todo: { type: integer }
+                      doing: { type: integer }
+                      done: { type: integer }
+                  open_tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/agent/users/{id}/activity:
+    get:
+      operationId: get_user_activity
+      summary: A team member's recent task activity (self, or anyone if admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile: { type: object }
+                  counts:
+                    type: object
+                    properties:
+                      open: { type: integer }
+                      overdue: { type: integer }
+                      done: { type: integer }
+                  recent_tasks: { type: array, items: { $ref: "#/components/schemas/Task" } }
+        "403":
+          description: Forbidden — viewing someone else's activity requires admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/agent/system/health:
+    get:
+      operationId: get_system_health
+      summary: CTO-level snapshot of users, projects, and tasks (admin only)
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/agent/tasks:
+    post:
+      operationId: create_task
+      summary: Create a task (assigning to someone else requires admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, minLength: 2, maxLength: 200 }
+                description: { type: string, nullable: true }
+                due_start: { type: string, format: date, nullable: true }
+                due_end: { type: string, format: date, nullable: true }
+                due_label: { type: string, nullable: true }
+                status: { type: string, enum: [todo, doing, done], default: todo }
+                priority: { type: string, enum: [low, med, high], default: med }
+                assignee_id: { type: string, format: uuid, nullable: true }
+                project_id: { type: string, format: uuid, nullable: true }
+                person_id: { type: string, format: uuid, nullable: true }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+        "403":
+          description: Forbidden — assigning to another user requires admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/agent/tasks/{id}:
+    patch:
+      operationId: update_task
+      summary: Update task fields (not assignee — use assign_task)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string, nullable: true }
+                due_start: { type: string, format: date, nullable: true }
+                due_end: { type: string, format: date, nullable: true }
+                due_label: { type: string, nullable: true }
+                status: { type: string, enum: [todo, doing, done] }
+                priority: { type: string, enum: [low, med, high] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/agent/tasks/{id}/assign:
+    post:
+      operationId: assign_task
+      summary: Reassign a task (owner or admin only); emails the new assignee
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assignee_id]
+              properties:
+                assignee_id: { type: string, format: uuid, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/agent/tasks/{id}/complete:
+    post:
+      operationId: complete_task
+      summary: Mark a task done (assignee, owner, or admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
