@@ -1,10 +1,24 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// /api/agent is authenticated by its own bearer-token scheme (see
-// src/lib/agent/auth.ts), not the Supabase session cookie, so it must be
-// exempt from the cookie-based redirect-to-login check below.
-const PUBLIC_PATHS = ["/login", "/auth", "/privacy", "/terms", "/api/health", "/api/agent"];
+// /api/agent and /api/mcp authenticate themselves via a bearer token (see
+// src/lib/agent/auth.ts), not the Supabase session cookie, so they're
+// exempt from the cookie-based redirect-to-login check below. /api/oauth
+// (token exchange + dynamic client registration) and /.well-known
+// (OAuth server/resource metadata) are unauthenticated by design — only
+// /oauth/authorize itself requires a session, and deliberately stays out
+// of this list so the normal login gate (with `next` preserved) applies.
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth",
+  "/privacy",
+  "/terms",
+  "/api/health",
+  "/api/agent",
+  "/api/mcp",
+  "/api/oauth",
+  "/.well-known",
+];
 const ONBOARDING_SAFE_PATHS = ["/login", "/auth", "/onboarding", "/privacy", "/terms"];
 
 // Cookie that mirrors `profiles.onboarded_at IS NOT NULL`. Set by the
@@ -48,8 +62,13 @@ export async function updateSession(request: NextRequest) {
     pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublic) {
+    const originalPath = pathname + request.nextUrl.search;
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = "";
+    // Only ever a same-origin relative path — never pass this through to
+    // an external redirect, since Supabase already owns the OAuth flow.
+    url.searchParams.set("next", originalPath);
     return NextResponse.redirect(url);
   }
 
