@@ -16,5 +16,6 @@ export async function GET(request: Request) {
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["client_secret_post", "none"],
+    authorization_response_iss_parameter_supported: true,
   });
 }
