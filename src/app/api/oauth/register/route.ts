@@ -9,9 +9,13 @@ import { createOAuthClient } from "@/lib/oauth/store";
 import { isAllowedRedirectUri } from "@/lib/oauth/allowlist";
 
 const registerSchema = z.object({
-  redirect_uris: z.array(z.string().url()).min(1),
-  client_name: z.string().max(100).optional(),
+  redirect_uris: z.array(z.string().url().max(2048)).min(1).max(10),
+  client_name: z.string().min(1).max(100).optional(),
   token_endpoint_auth_method: z.enum(["client_secret_post", "none"]).default("client_secret_post"),
+  // MCP 2026 clients declare native/web during DCR. We don't use this as a
+  // trust signal — redirect_uris are still independently allowlisted — but
+  // echoing it keeps registration metadata standards-shaped.
+  application_type: z.enum(["native", "web"]).optional(),
 });
 
 export async function POST(request: Request) {
@@ -24,7 +28,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { redirect_uris, client_name, token_endpoint_auth_method } = parsed.data;
+  const { redirect_uris, client_name, token_endpoint_auth_method, application_type } = parsed.data;
 
   const disallowed = redirect_uris.find((uri) => !isAllowedRedirectUri(uri));
   if (disallowed) {
@@ -50,6 +54,7 @@ export async function POST(request: Request) {
       client_name: client_name ?? "AI connector",
       redirect_uris,
       token_endpoint_auth_method,
+      ...(application_type ? { application_type } : {}),
       client_id_issued_at: Math.floor(Date.now() / 1000),
     },
     { status: 201 },
