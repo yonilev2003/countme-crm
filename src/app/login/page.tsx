@@ -1,21 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function isSafeNext(next: string): boolean {
+  // Same-origin relative path only — never let this become an open redirect.
+  return next.startsWith("/") && !next.startsWith("//");
+}
+
+function LoginCard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   async function signInWithGoogle() {
     setLoading(true);
     setError(null);
+    const rawNext = searchParams.get("next");
+    const next = rawNext && isSafeNext(rawNext) ? rawNext : "/tasks";
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: "https://www.googleapis.com/auth/calendar",
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
         queryParams: {
           access_type: "offline",
           prompt: "consent",
@@ -66,5 +75,13 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginCard />
+    </Suspense>
   );
 }

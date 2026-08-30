@@ -72,16 +72,43 @@ curl -s -X POST https://countme-crm.vercel.app/api/agent/tasks/<id>/assign \
   -d '{"assignee_id":"<uuid-של-רוי>"}'
 ```
 
-## חיבור ל-Claude (MCP) ול-ChatGPT (Custom GPT Actions)
+## חיבור ל-Claude ול-ChatGPT
 
-- **Claude**: `mcp-server/` הוא שרת MCP מקומי (stdio) שעוטף את 12 הפעולות
-  האלה כ-tools. הוראות התקנה ב-`mcp-server/README.md`. רץ אצל המשתמש
-  עצמו (לא בפרודקשן), עם הטוקן האישי שלו כמשתנה סביבה.
-- **ChatGPT**: `docs/agent-api.openapi.yaml` הוא ה-schema המלא ל-12
-  ה-operations, מוכן להדבקה תחת GPT Builder → Actions (bearer auth).
+יש שתי דרכים להתחבר — שתיהן עוטפות בדיוק את אותו HTTP contract, אין
+שכפול לוגיקה ואין חשיפה של SQL באף אחת מהן:
 
-שני המסלולים עוטפים בדיוק את אותו HTTP contract — אין שכפול לוגיקה,
-ואין חשיפה של SQL בשום מסלול.
+### א. Connector בלחיצה אחת (מומלץ) — Claude.ai / Claude Code / ChatGPT
+
+CountMe הוא עכשיו גם שרת MCP מרוחק עם OAuth 2.1 אמיתי (PKCE, discovery
+metadata, dynamic client registration) — בדיוק מה שה-UI של "Add custom
+connector" ב-Claude.ai מצפה לו.
+
+1. Claude.ai → Settings → Connectors → **Add custom connector**.
+2. הדבק כתובת: `https://countme-crm.vercel.app/api/mcp`.
+3. Claude יוביל אותך להתחברות ל-CountMe (אם אתה כבר מחובר בדפדפן — מסך
+   אישור אחד) ולבחירת ההרשאות. באישור, נוצר טוקן אישי אוטומטית — בדיוק
+   כמו טוקן שהיית יוצר ידנית ב-`/settings/agent`, רק בלי להעתיק-להדביק.
+4. ל-ChatGPT: תלוי בגרסה — אם יש לך "Connectors"/"Apps" מבוסס-MCP, אותה
+   כתובת עובדת אותו דבר. אם לא, השתמש באופציה ב' למטה.
+
+הכתובות הטכניות מתגלות אוטומטית (`/.well-known/oauth-authorization-server`,
+`/.well-known/oauth-protected-resource`) — אין צורך להזין אותן ידנית.
+פרטי המימוש: `src/app/oauth/`, `src/app/api/oauth/`, `src/app/api/mcp/`,
+מיגרציה `0015_oauth_connector.sql`.
+
+**הערה חשובה**: רשימת ה-redirect_uri המותרת בהרשמת לקוח (`src/lib/oauth/allowlist.ts`)
+כוללת את הדומיינים הידועים של Claude/Anthropic ו-ChatGPT/OpenAI. אם
+חיבור נכשל עם "redirect_uri not allowed" — כנראה שהדומיין המדויק ששלחו
+שונה; תוסיפו אותו לרשימה.
+
+### ב. ידני — שרת MCP מקומי / Custom GPT Actions
+
+- **Claude Code / Desktop (מקומי)**: `mcp-server/` הוא שרת MCP מקומי
+  (stdio). הוראות ב-`mcp-server/README.md`, עם הטוקן האישי שלך כמשתנה
+  סביבה (`COUNTME_API_TOKEN`, מ-`/settings/agent`).
+- **ChatGPT (Custom GPT Actions הישן)**: `docs/agent-api.openapi.yaml`
+  הוא ה-schema המלא ל-12 ה-operations, מוכן להדבקה תחת GPT Builder →
+  Actions (bearer auth, טוקן מ-`/settings/agent`).
 
 ## מה עוד לא קיים (מכוון)
 
