@@ -24,10 +24,17 @@ export function isAllowedRedirectUri(raw: string): boolean {
     return false;
   }
 
-  // Loopback callbacks (Claude Code/Desktop) are always http; everything
-  // else must be https.
+  // OAuth redirect URIs must not carry fragments or embedded credentials.
+  if (url.hash || url.username || url.password) return false;
+
   const isLoopback = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-  if (!isLoopback && url.protocol !== "https:") return false;
+
+  // Native/local MCP clients use an HTTP loopback callback. Never allow an
+  // arbitrary scheme merely because its hostname happens to be localhost.
+  if (isLoopback) return url.protocol === "http:";
+
+  // Every non-loopback callback must be HTTPS.
+  if (url.protocol !== "https:") return false;
 
   if (ALLOWED_EXACT_HOSTS.has(url.hostname)) return true;
   return ALLOWED_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix));
