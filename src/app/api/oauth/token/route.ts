@@ -10,7 +10,6 @@ import {
   verifyClientSecret,
   consumeAuthCode,
 } from "@/lib/oauth/store";
-import { verifyPkce } from "@/lib/oauth/pkce";
 import {
   createAgentServiceClient,
   generateAgentToken,
@@ -51,13 +50,16 @@ export async function POST(request: Request) {
     return errorResponse("invalid_client", "Client authentication failed", 401);
   }
 
-  const consumed = await consumeAuthCode({ code, clientId, redirectUri });
+  // consumeAuthCode verifies client/redirect/expiry + PKCE and then claims
+  // the code with a conditional UPDATE, so only one concurrent exchange can win.
+  const consumed = await consumeAuthCode({
+    code,
+    clientId,
+    redirectUri,
+    codeVerifier,
+  });
   if (!consumed) {
-    return errorResponse("invalid_grant", "Authorization code is invalid, expired, or already used");
-  }
-
-  if (!verifyPkce(codeVerifier, consumed.codeChallenge)) {
-    return errorResponse("invalid_grant", "PKCE verification failed");
+    return errorResponse("invalid_grant", "Authorization code is invalid, expired, already used, or PKCE verification failed");
   }
 
   const rawToken = generateAgentToken();

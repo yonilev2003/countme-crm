@@ -14,8 +14,10 @@ set search_path = public;
 create table if not exists oauth_clients (
   client_id text primary key,
   client_secret_hash text,
-  client_name text not null default 'AI connector',
-  redirect_uris text[] not null,
+  client_name text not null default 'AI connector'
+    check (char_length(client_name) between 1 and 100),
+  redirect_uris text[] not null
+    check (cardinality(redirect_uris) between 1 and 10),
   created_at timestamptz not null default now()
 );
 
@@ -25,13 +27,15 @@ create table if not exists oauth_auth_codes (
   client_id text not null references oauth_clients(client_id) on delete cascade,
   redirect_uri text not null,
   code_challenge text not null,
-  code_challenge_method text not null default 'S256',
+  code_challenge_method text not null default 'S256'
+    check (code_challenge_method = 'S256'),
   expires_at timestamptz not null,
   used_at timestamptz,
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_oauth_auth_codes_user on oauth_auth_codes(user_id);
+create index if not exists idx_oauth_auth_codes_expires on oauth_auth_codes(expires_at);
 
 -- Both tables are only ever touched by the service-role client from
 -- server-side OAuth route handlers (never the browser/anon key), so RLS
