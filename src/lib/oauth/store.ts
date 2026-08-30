@@ -1,5 +1,6 @@
 import { randomBytes, createHash, timingSafeEqual } from "crypto";
 import { createAgentServiceClient } from "@/lib/agent/auth";
+import { verifyPkce } from "@/lib/oauth/pkce";
 
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000;
 
@@ -80,11 +81,18 @@ export async function createAuthCode(input: {
   return code;
 }
 
+/**
+ * Validates and atomically consumes one authorization code.
+ * PKCE is checked before the code is marked used, so a request without the
+ * verifier cannot burn somebody else's code. The conditional UPDATE is the
+ * single-use gate: concurrent exchanges race here and only one can win.
+ */
 export async function consumeAuthCode(input: {
   code: string;
   clientId: string;
   redirectUri: string;
-}): Promise<{ userId: string; codeChallenge: string } | null> {
+  codeVerifier: string;
+}): Promise<{ userId: string } | null> {
   const service = createAgentServiceClient();
   const { data } = await service
     .from("oauth_auth_codes")
@@ -97,13 +105,20 @@ export async function consumeAuthCode(input: {
   if (data.client_id !== input.clientId) return null;
   if (data.redirect_uri !== input.redirectUri) return null;
   if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  if (!verifyPkce(input.codeVerifier, data.code_challenge)) return null;
 
-  // Single-use: mark consumed immediately so a retried/leaked code can't
-  // be replayed even within its TTL.
-  await service
+  const now = new Date().toISOString();
+  const { data: claimed, error } = await service
     .from("oauth_auth_codes")
-    .update({ used_at: new Date().toISOString() })
-    .eq("code", input.code);
+    .update({ used_at: now })
+    .eq("code", input.code)
+    .eq("client_id", input.clientId)
+    .eq("redirect_uri", input.redirectUri)
+    .is("used_at", null)
+    .gt("expires_at", now)
+    .select("code")
+    .maybeSingle();
 
-  return { userId: data.user_id, codeChallenge: data.code_challenge };
+  if (error || !claimed) return null;
+  return { userId: data.user_id };
 }
